@@ -219,6 +219,47 @@ class KPICard(ctk.CTkFrame):
 
 
 
+class VibeBarsCard(ctk.CTkFrame):
+    _COLORS = {"🌟": "#4ade80", "🤷": "#60a5fa", "💔": "#f87171", "": "#555566"}
+
+    def __init__(self, parent, vibe_counts, **kw):
+        super().__init__(parent, fg_color=C["card"], corner_radius=10,
+                         border_width=1, border_color=C["border"], **kw)
+        self._counts = {k: v for k, v in vibe_counts.items() if v > 0}
+        self._max    = max(self._counts.values()) if self._counts else 1
+        self._canvas = tk.Canvas(self, bg=C["card"], highlightthickness=0)
+        self._canvas.pack(fill="both", expand=True, padx=8, pady=8)
+        self._canvas.bind("<Configure>", self._paint)
+
+    def _paint(self, _=None):
+        self._canvas.delete("all")
+        w, h = self._canvas.winfo_width(), self._canvas.winfo_height()
+        if w < 10 or h < 10 or not self._counts:
+            return
+        vibes      = [e for e in ("🌟", "🤷", "💔", "") if e in self._counts]
+        n          = len(vibes)
+        pad_x      = 12
+        pad_top    = 14
+        pad_bot    = 28
+        bar_area_h = h - pad_top - pad_bot
+        slot_w     = (w - 2 * pad_x) / n
+        bar_w      = max(10, int(slot_w * 0.55))
+        for i, emoji in enumerate(vibes):
+            count  = self._counts[emoji]
+            bar_h  = max(4, int(bar_area_h * count / self._max))
+            cx     = int(pad_x + slot_w * i + slot_w / 2)
+            x0, x1 = cx - bar_w // 2, cx + bar_w // 2
+            y1     = h - pad_bot
+            y0     = y1 - bar_h
+            self._canvas.create_rectangle(x0, y0, x1, y1,
+                                          fill=self._COLORS.get(emoji, C["muted"]),
+                                          outline="")
+            self._canvas.create_text(cx, y0 - 4, text=str(count), anchor="s",
+                                     fill=C["text"], font=("Helvetica", 10, "bold"))
+            self._canvas.create_text(cx, h - pad_bot + 4, text=emoji or "?",
+                                     anchor="n", fill=C["text"], font=("Helvetica", 14))
+
+
 class _HBar(tk.Canvas):
     def __init__(self, parent, label, value, max_value, color):
         super().__init__(parent, bg=C["card"], highlightthickness=0, height=34)
@@ -447,8 +488,11 @@ class CombinedDashboard(ctk.CTkFrame):
                 row1.grid_columnconfigure(col, weight=1, uniform="k1")
             row1.grid_rowconfigure(0, weight=1)
 
-            KPICard(row1, "Total Bills",
-                    str(summary.get("bill_count", 0)), C["blue"]).grid(
+            _vibe_counts = {}
+            for _b in annotated:
+                _v = _vibe_emoji(_b.get("vibe", ""))
+                _vibe_counts[_v] = _vibe_counts.get(_v, 0) + 1
+            VibeBarsCard(row1, _vibe_counts).grid(
                 row=0, column=0, sticky="nsew", padx=(0, 6), pady=4)
             _paid  = summary.get("total_paid", 0)
             _due   = summary.get("total_due",  0)

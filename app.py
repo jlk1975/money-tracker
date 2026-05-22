@@ -58,9 +58,9 @@ GRID_COLUMNS = [
     ("Amount",     90),
     ("Frequency",  90),
     ("Date Paid",  90),
-    ("Notes",     180),
+    ("Funded",     70),
 ]
-LEFT_ALIGN = {"Status", "Account", "Expense", "Due Date", "Frequency", "Date Paid", "Notes"}
+LEFT_ALIGN = {"Status", "Account", "Expense", "Due Date", "Frequency", "Date Paid"}
 
 # ── Definitions tab grid ──────────────────────────────────────────────────────
 DEF_COLUMNS = [
@@ -122,7 +122,7 @@ def _merge_row(inst):
         _fmt(inst.get("amount")),
         inst.get("frequency", ""),
         inst.get("date_paid", ""),
-        inst.get("notes", ""),
+        "✓" if inst.get("funded") else "",
     )
 
 
@@ -265,12 +265,14 @@ class CombinedDashboard(ctk.CTkFrame):
         self._toolbar.pack(fill="x")
         self._toolbar.pack_propagate(False)
         for label, cmd in [
-            ("+ Add Bill",      self._add),
-            ("✎ Edit",          self._edit),
-            ("✗ Mark Unpaid",   self._mark_unpaid),
-            ("✓ Mark Paid",     self._mark_paid),
-            ("🗑 Delete",        self._delete),
-            ("⬇ Export CSV",    self._export),
+            ("+ Add Bill",        self._add),
+            ("✎ Edit",            self._edit),
+            ("✗ Mark Not Funded", self._mark_not_funded),
+            ("✓ Mark Funded",     self._mark_funded),
+            ("✗ Mark Unpaid",     self._mark_unpaid),
+            ("✓ Mark Paid",       self._mark_paid),
+            ("🗑 Delete",          self._delete),
+            ("⬇ Export CSV",      self._export),
         ]:
             ctk.CTkButton(self._toolbar, text=label, width=128, height=30,
                           command=cmd).pack(side="right", padx=6, pady=7)
@@ -367,7 +369,8 @@ class CombinedDashboard(ctk.CTkFrame):
             ProgressCard(row2, "Payment Progress", _pct,
                          sub=f"{_pct*100:.0f}%  —  {_fmt(_paid)} of {_fmt(_total)}").grid(
                 row=0, column=0, sticky="nsew", padx=(0, 6), pady=4)
-            KPICard(row2, "$$$ Funded", "TBD2").grid(
+            _funded_total = sum(b.get("amount", 0) for b in annotated if b.get("funded"))
+            KPICard(row2, "$$$ Funded", _fmt(_funded_total), C["green"]).grid(
                 row=0, column=1, sticky="nsew", padx=6, pady=4)
             KPICard(row2, "TBD3", "TBD3").grid(
                 row=0, column=2, sticky="nsew", padx=6, pady=4)
@@ -471,6 +474,40 @@ class CombinedDashboard(ctk.CTkFrame):
         db.update_instance(self._selected_id, updated, DB_PATH)
         self._app.refresh()
         self._app.flash(f"Marked unpaid: {inst.get('description', '')[:40]}")
+
+    def _mark_funded(self):
+        if not self._selected_id:
+            self._app.flash("Select a bill to mark as funded.")
+            return
+        annotated, _ = _load_and_annotate(self._app.current_month())
+        inst = next((b for b in annotated if b["id"] == self._selected_id), None)
+        if not inst:
+            return
+        if inst.get("funded"):
+            self._app.flash("Bill is already funded.")
+            return
+        updated = dict(inst)
+        updated["funded"] = 1
+        db.update_instance(self._selected_id, updated, DB_PATH)
+        self._app.refresh()
+        self._app.flash(f"Marked funded: {inst.get('description', '')[:40]}")
+
+    def _mark_not_funded(self):
+        if not self._selected_id:
+            self._app.flash("Select a bill to mark as not funded.")
+            return
+        annotated, _ = _load_and_annotate(self._app.current_month())
+        inst = next((b for b in annotated if b["id"] == self._selected_id), None)
+        if not inst:
+            return
+        if not inst.get("funded"):
+            self._app.flash("Bill is already not funded.")
+            return
+        updated = dict(inst)
+        updated["funded"] = 0
+        db.update_instance(self._selected_id, updated, DB_PATH)
+        self._app.refresh()
+        self._app.flash(f"Marked not funded: {inst.get('description', '')[:40]}")
 
     def _delete(self):
         if not self._selected_id:

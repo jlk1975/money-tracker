@@ -64,9 +64,16 @@ def init_db(db_path=DEFAULT_DB):
                 amount         REAL    NOT NULL DEFAULT 0,
                 frequency      TEXT    NOT NULL DEFAULT '',
                 date_paid      TEXT    NOT NULL DEFAULT '',
-                notes          TEXT    NOT NULL DEFAULT ''
+                notes          TEXT    NOT NULL DEFAULT '',
+                funded         INTEGER NOT NULL DEFAULT 0
             )
         """)
+        try:
+            con.execute(
+                "ALTER TABLE bill_instances ADD COLUMN funded INTEGER NOT NULL DEFAULT 0"
+            )
+        except Exception:
+            pass
 
 
 # ── Bill Definitions CRUD ─────────────────────────────────────────────────────
@@ -155,8 +162,8 @@ def insert_instance(instance, db_path=DEFAULT_DB):
         cur = con.execute("""
             INSERT INTO bill_instances
                 (row_order, definition_id, month_key, account, description,
-                 status, due_date, amount, frequency, date_paid, notes)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                 status, due_date, amount, frequency, date_paid, notes, funded)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (
             max_order + 1,
             instance.get("definition_id"),
@@ -169,6 +176,7 @@ def insert_instance(instance, db_path=DEFAULT_DB):
             instance.get("frequency", ""),
             instance.get("date_paid", ""),
             instance.get("notes", ""),
+            instance.get("funded", 0),
         ))
         return cur.lastrowid
 
@@ -179,7 +187,7 @@ def update_instance(instance_id, instance, db_path=DEFAULT_DB):
         con.execute("""
             UPDATE bill_instances
             SET account=?, description=?, status=?, due_date=?,
-                amount=?, frequency=?, date_paid=?, notes=?
+                amount=?, frequency=?, date_paid=?, notes=?, funded=?
             WHERE id=?
         """, (
             instance.get("account", ""),
@@ -190,6 +198,7 @@ def update_instance(instance_id, instance, db_path=DEFAULT_DB):
             instance.get("frequency", ""),
             instance.get("date_paid", ""),
             instance.get("notes", ""),
+            instance.get("funded", 0),
             instance_id,
         ))
 

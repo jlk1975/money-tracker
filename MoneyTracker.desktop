@@ -1,0 +1,10 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=Money Tracker
+Comment=Household bill tracker
+Exec=/home/jdog/code/money-tracker/launch.sh
+Icon=/usr/share/icons/Papirus/64x64/apps/money-manager-ex.svg
+Terminal=false
+StartupNotify=false
+Categories=Finance;

@@ -2,6 +2,9 @@
 
 Personal household bill tracker. Tracks recurring and one-off bills.
 
+## Data directory
+Runtime files (DB and settings) live at `~/.local/share/money-tracker/` — separate from the project source.
+
 ## Running the app
 ```bash
 money-tracker          # alias in ~/.bashrc — launches in background

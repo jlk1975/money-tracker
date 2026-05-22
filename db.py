@@ -6,11 +6,12 @@ Two tables:
   bill_instances    — one row per bill per month, generated from definitions
 """
 
+import os
 import sqlite3
 import calendar
 from contextlib import contextmanager
 
-DEFAULT_DB = "money_tracker.db"
+DEFAULT_DB = os.path.join(os.path.expanduser("~"), ".local", "share", "money-tracker", "money_tracker.db")
 
 
 @contextmanager

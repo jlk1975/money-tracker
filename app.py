@@ -17,8 +17,10 @@ import calc
 ctk.set_appearance_mode("dark")
 ctk.set_default_color_theme("blue")
 
-DB_PATH       = os.path.join(os.path.dirname(__file__), "money_tracker.db")
-SETTINGS_PATH = os.path.join(os.path.dirname(__file__), "settings.json")
+_DATA_DIR     = os.path.join(os.path.expanduser("~"), ".local", "share", "money-tracker")
+os.makedirs(_DATA_DIR, exist_ok=True)
+DB_PATH       = os.path.join(_DATA_DIR, "money_tracker.db")
+SETTINGS_PATH = os.path.join(_DATA_DIR, "settings.json")
 
 # ── Palette ───────────────────────────────────────────────────────────────────
 C = {

@@ -29,7 +29,7 @@ python3 wipe.py    # interactive: wipe instances only, or everything
 |------|---------|
 | `db.py` | All SQLite access — two tables, see schema below |
 | `calc.py` | Pure functions: `annotate_instances()`, `calculate_summary()` |
-| `app.py` | customtkinter GUI — 2 tabs: Bill Dashboard, Bill Definitions |
+| `app.py` | customtkinter GUI — 2 tabs: Dashboard, Definitions |
 | `seed.py` | One-time seeder using `tests/fixtures.py` sample data |
 | `wipe.py` | Interactive wipe utility |
 | `tests/fixtures.py` | 19 sample definitions + expected totals (SAMPLE_JUNE_TOTAL, SAMPLE_MAY_TOTAL) |
@@ -59,7 +59,9 @@ python3 wipe.py    # interactive: wipe instances only, or everything
 - **`annotate_instances()`** returns instances as a new list of dicts (no longer adds computed fields)
 - **`calculate_summary()`** returns `total_due`, `total_paid`, `bill_count`
 - **Funded workflow**: bills must be marked Funded before they can be marked Paid; toolbar has Mark Funded / Mark Not Funded / Mark Paid / Mark Unpaid buttons
-- **Bill Dashboard tab**: 2 rows of 4 widgets + collapsible toggle; Bill Definitions tab unchanged
+- **Tab switching**: no CTkTabview — manual frame-swap via `_switch_tab()`; "Dashboard" / "Definitions" buttons centered in header; active tab highlighted in blue, inactive in `C["card2"]`
+- **Header**: 💰 emoji (size 36) on left and right ends; tab buttons centered via 3-column grid layout; window title is "Bill Tracker"
+- **Dashboard tab**: 2 rows of 4 widgets + collapsible toggle; Definitions tab unchanged
   - Row 1: `VibeBarsCard` (horizontal bar chart by vibe emoji), Payment Progress, Paid, Due
   - Row 2: Funded Not Paid, Funding Progress, Funded, Not Funded
   - Right sidebar: Spending by Vibe + By Pay Mode breakdowns

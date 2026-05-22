@@ -252,6 +252,7 @@ class CombinedDashboard(ctk.CTkFrame):
         self._selected_id = None
         self._sort_col = None
         self._sort_asc = True
+        self._metrics_visible = True
         self._build()
 
     def _build(self):
@@ -271,6 +272,15 @@ class CombinedDashboard(ctk.CTkFrame):
         self._right_btn = ctk.CTkButton(self._nav_bar, text="▶", width=36, height=28,
                                          command=self._app.navigate_right)
         self._right_btn.pack(side="left", padx=(0, 4), pady=7)
+
+        ctk.CTkButton(self._nav_bar, text="This Month", width=90, height=28,
+                      command=self._app.navigate_to_today).pack(
+            side="left", padx=(10, 0), pady=7)
+
+        self._toggle_btn = ctk.CTkButton(self._nav_bar, text="▲ Hide Summary",
+                                          width=120, height=28,
+                                          command=self._toggle_metrics)
+        self._toggle_btn.pack(side="right", padx=(0, 10), pady=7)
 
         self._metrics_panel = ctk.CTkFrame(self, fg_color="transparent")
         self._metrics_panel.pack(fill="x")
@@ -331,6 +341,15 @@ class CombinedDashboard(ctk.CTkFrame):
 
         self._tree.bind("<<TreeviewSelect>>", self._on_select)
         self._tree.bind("<Double-1>", lambda _: self._edit())
+
+    def _toggle_metrics(self):
+        if self._metrics_visible:
+            self._metrics_panel.pack_forget()
+            self._toggle_btn.configure(text="▼ Show Summary")
+        else:
+            self._metrics_panel.pack(fill="x", before=self._toolbar)
+            self._toggle_btn.configure(text="▲ Hide Summary")
+        self._metrics_visible = not self._metrics_visible
 
     def get_column_widths(self):
         return {col: self._tree.column(col, "width") for col, _ in GRID_COLUMNS}
@@ -1055,6 +1074,12 @@ class MoneyTrackerApp(ctk.CTk):
         if not self.can_navigate_right():
             return
         self._current_month = _add_months(self._current_month, 1)
+        db.generate_month_instances(self._current_month, DB_PATH)
+        self.refresh()
+
+    def navigate_to_today(self):
+        today = date.today()
+        self._current_month = f"{today.year:04d}-{today.month:02d}"
         db.generate_month_instances(self._current_month, DB_PATH)
         self.refresh()
 

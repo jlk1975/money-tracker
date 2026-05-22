@@ -941,12 +941,12 @@ class MoneyTrackerApp(ctk.CTk):
     def __init__(self):
         super().__init__()
         self.title("Money Tracker")
-        self.geometry("1300x820")
         self.minsize(960, 620)
 
         db.init_db(DB_PATH)
 
         self._settings = self._load_settings()
+        self.geometry(self._settings.get("geometry", "1300x820"))
         today = date.today()
         default_month = f"{today.year:04d}-{today.month:02d}"
         self._current_month = self._settings.get("last_month", default_month)
@@ -1051,6 +1051,7 @@ class MoneyTrackerApp(ctk.CTk):
                 json.dump({
                     "last_month":    self._current_month,
                     "column_widths": self._dashboard.get_column_widths(),
+                    "geometry":      self.geometry(),
                 }, f, indent=2)
         except Exception:
             pass

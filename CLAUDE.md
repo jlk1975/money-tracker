@@ -58,7 +58,7 @@ python3 wipe.py    # interactive: wipe instances only, or everything
 - **`annotate_instances()`** returns instances as a new list of dicts (no longer adds computed fields)
 - **`calculate_summary()`** returns `total_due`, `total_paid`, `bill_count`
 - **Funded workflow**: bills must be marked Funded before they can be marked Paid; toolbar has Mark Funded / Mark Not Funded / Mark Paid / Mark Unpaid buttons
-- **Dashboard tab**: 2 rows of 4 KPI cards (Total Bills, Payment Progress, Paid, Due / Funded Not Paid (YNAB), Funding Progress, Funded, Not Funded) + full bill grid with sortable columns; Definitions tab unchanged
+- **Dashboard tab**: 2 rows of 4 KPI cards (Total Bills, Payment Progress, Paid, Due / Funded Not Paid, Funding Progress, Funded, Not Funded) + full bill grid with sortable columns; Definitions tab unchanged
 
 ## Expected totals (from fixtures)
 - May 2026: 16 bills, $3,486.59 (Monthly only — no AdHoc)

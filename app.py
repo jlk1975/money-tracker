@@ -1,7 +1,6 @@
 """
 app.py — Money Tracker main application.
-Three tabs: Dashboard (monthly summary), Bills (monthly view with navigation),
-Definitions (master bill template list).
+Two tabs: Dashboard (summary + nav + bill grid), Definitions (master bill template list).
 """
 
 import tkinter as tk
@@ -186,95 +185,6 @@ class KPICard(ctk.CTkFrame):
             row=2, column=0, sticky="ew", padx=14, pady=(0, 10))
 
 
-# ── Dashboard Tab ─────────────────────────────────────────────────────────────
-
-class DashboardTab(ctk.CTkScrollableFrame):
-    def __init__(self, parent):
-        super().__init__(parent, fg_color=C["bg"], corner_radius=0)
-        self.refresh([], {}, "")
-
-    def refresh(self, annotated, summary, month_key):
-        for w in self.winfo_children():
-            w.destroy()
-
-        heading = _month_label(month_key) if month_key else ""
-
-        if not annotated:
-            ctk.CTkLabel(self, text=f"No bills for {heading}.",
-                         font=ctk.CTkFont(size=14), text_color=C["muted"]).pack(pady=60)
-            return
-
-        pad = {"padx": 18, "pady": 8}
-
-        ctk.CTkLabel(self, text=f"{heading} — Summary",
-                     font=ctk.CTkFont(size=14, weight="bold"),
-                     text_color=C["heading"]).pack(anchor="w", padx=18, pady=(16, 4))
-
-        row1 = ctk.CTkFrame(self, fg_color="transparent")
-        row1.pack(fill="x", **pad)
-        for col in range(4):
-            row1.grid_columnconfigure(col, weight=1, uniform="k1")
-        row1.grid_rowconfigure(0, weight=1)
-
-        KPICard(row1, "Total Bills",
-                str(summary.get("bill_count", 0)), C["blue"]).grid(
-            row=0, column=0, sticky="nsew", padx=(0, 6), pady=4)
-        KPICard(row1, "Total Due",
-                _fmt(summary.get("total_due", 0)), C["red"],
-                sub="Unpaid balance").grid(
-            row=0, column=1, sticky="nsew", padx=6, pady=4)
-        KPICard(row1, "Total Paid",
-                _fmt(summary.get("total_paid", 0)), C["green"]).grid(
-            row=0, column=2, sticky="nsew", padx=6, pady=4)
-        overdue_n = summary.get("overdue_count", 0)
-        KPICard(row1, "Overdue",
-                f"{overdue_n} bill{'s' if overdue_n != 1 else ''}",
-                C["orange"] if overdue_n > 0 else C["muted"],
-                sub=_fmt(summary.get("overdue_amount", 0)) if overdue_n > 0 else "All on time").grid(
-            row=0, column=3, sticky="nsew", padx=(6, 0), pady=4)
-
-        by_account = summary.get("by_account", {})
-        if by_account:
-            ctk.CTkLabel(self, text="Amount Due by Account",
-                         font=ctk.CTkFont(size=14, weight="bold"),
-                         text_color=C["heading"]).pack(anchor="w", padx=18, pady=(18, 4))
-            bar_card = ctk.CTkFrame(self, fg_color=C["card"], corner_radius=10,
-                                    border_width=1, border_color=C["border"])
-            bar_card.pack(fill="x", **pad)
-            max_val = max((v["due"] + v["paid"] for v in by_account.values()), default=1.0)
-            for acct, vals in sorted(by_account.items()):
-                _HBar(bar_card, acct, vals["due"], max_val,
-                      ACCOUNT_COLORS.get(acct, C["muted"])).pack(fill="x", padx=14, pady=4)
-            tk.Frame(bar_card, height=8, bg=C["card"]).pack()
-
-        upcoming = [b for b in annotated if b.get("status") == "Due"][:8]
-        if upcoming:
-            ctk.CTkLabel(self, text="Next Bills Due",
-                         font=ctk.CTkFont(size=14, weight="bold"),
-                         text_color=C["heading"]).pack(anchor="w", padx=18, pady=(18, 4))
-            up_card = ctk.CTkFrame(self, fg_color=C["card"], corner_radius=10,
-                                   border_width=1, border_color=C["border"])
-            up_card.pack(fill="x", **pad)
-            for bill in upcoming:
-                acct_color = ACCOUNT_COLORS.get(bill.get("account", ""), C["muted"])
-                row = tk.Frame(up_card, bg=C["card"])
-                row.pack(fill="x", padx=14, pady=3)
-                tk.Label(row, text=f"[{bill.get('account', '')}]",
-                         bg=C["card"], fg=acct_color,
-                         font=("Consolas", 10), width=13, anchor="w").pack(side="left")
-                desc = bill.get("description", "")
-                if len(desc) > 44:
-                    desc = desc[:41] + "..."
-                tk.Label(row, text=desc, bg=C["card"], fg=C["text"],
-                         font=("Helvetica", 11), anchor="w").pack(side="left", padx=(6, 0))
-                tk.Label(row, text=_fmt(bill.get("amount")), bg=C["card"], fg=C["yellow"],
-                         font=("Consolas", 11)).pack(side="right")
-                tk.Label(row, text=bill.get("due_date", ""), bg=C["card"], fg=C["muted"],
-                         font=("Consolas", 10)).pack(side="right", padx=(0, 12))
-            tk.Frame(up_card, height=8, bg=C["card"]).pack()
-
-        tk.Frame(self, height=20, bg=C["bg"]).pack()
-
 
 class _HBar(tk.Canvas):
     def __init__(self, parent, label, value, max_value, color):
@@ -300,9 +210,9 @@ class _HBar(tk.Canvas):
                          anchor="w", fill=C["text"], font=("Consolas", 11))
 
 
-# ── Bills Tab ─────────────────────────────────────────────────────────────────
+# ── Combined Dashboard Tab ────────────────────────────────────────────────────
 
-class BillsTab(ctk.CTkFrame):
+class CombinedDashboard(ctk.CTkFrame):
     def __init__(self, parent, app):
         super().__init__(parent, fg_color="transparent", corner_radius=0)
         self._app = app
@@ -310,28 +220,29 @@ class BillsTab(ctk.CTkFrame):
         self._build()
 
     def _build(self):
-        # Month navigation bar
-        nav = ctk.CTkFrame(self, height=42, corner_radius=0, fg_color=C["card"])
-        nav.pack(fill="x")
-        nav.pack_propagate(False)
+        self._nav_bar = ctk.CTkFrame(self, height=42, corner_radius=0, fg_color=C["card"])
+        self._nav_bar.pack(fill="x")
+        self._nav_bar.pack_propagate(False)
 
-        self._left_btn = ctk.CTkButton(nav, text="◀", width=36, height=28,
+        self._left_btn = ctk.CTkButton(self._nav_bar, text="◀", width=36, height=28,
                                         command=self._app.navigate_left)
         self._left_btn.pack(side="left", padx=(10, 4), pady=7)
 
-        self._month_lbl = ctk.CTkLabel(nav, text="",
+        self._month_lbl = ctk.CTkLabel(self._nav_bar, text="",
                                         font=ctk.CTkFont(size=15, weight="bold"),
                                         text_color=C["heading"], width=160)
         self._month_lbl.pack(side="left", padx=6)
 
-        self._right_btn = ctk.CTkButton(nav, text="▶", width=36, height=28,
+        self._right_btn = ctk.CTkButton(self._nav_bar, text="▶", width=36, height=28,
                                          command=self._app.navigate_right)
         self._right_btn.pack(side="left", padx=(0, 4), pady=7)
 
-        # Toolbar
-        sub = ctk.CTkFrame(self, height=44, corner_radius=0, fg_color=C["card2"])
-        sub.pack(fill="x")
-        sub.pack_propagate(False)
+        self._metrics_panel = ctk.CTkFrame(self, fg_color="transparent")
+        self._metrics_panel.pack(fill="x")
+
+        self._toolbar = ctk.CTkFrame(self, height=44, corner_radius=0, fg_color=C["card2"])
+        self._toolbar.pack(fill="x")
+        self._toolbar.pack_propagate(False)
         for label, cmd in [
             ("+ Add Bill",      self._add),
             ("✎ Edit",          self._edit),
@@ -339,11 +250,11 @@ class BillsTab(ctk.CTkFrame):
             ("🗑 Delete",        self._delete),
             ("⬇ Export CSV",    self._export),
         ]:
-            ctk.CTkButton(sub, text=label, width=128, height=30,
+            ctk.CTkButton(self._toolbar, text=label, width=128, height=30,
                           command=cmd).pack(side="right", padx=6, pady=7)
 
-        container = tk.Frame(self, bg="#1a1a2e")
-        container.pack(fill="both", expand=True)
+        self._tree_container = tk.Frame(self, bg="#1a1a2e")
+        self._tree_container.pack(fill="both", expand=True)
 
         style = ttk.Style()
         style.theme_use("clam")
@@ -359,11 +270,11 @@ class BillsTab(ctk.CTkFrame):
                   foreground=[("selected", "#ffffff")])
 
         col_ids = [c[0] for c in GRID_COLUMNS]
-        vsb = ttk.Scrollbar(container, orient="vertical")
-        hsb = ttk.Scrollbar(container, orient="horizontal")
+        vsb = ttk.Scrollbar(self._tree_container, orient="vertical")
+        hsb = ttk.Scrollbar(self._tree_container, orient="horizontal")
         vsb.pack(side="right", fill="y")
         hsb.pack(side="bottom", fill="x")
-        self._tree = ttk.Treeview(container, columns=col_ids, show="headings",
+        self._tree = ttk.Treeview(self._tree_container, columns=col_ids, show="headings",
                                    style="Money.Treeview",
                                    yscrollcommand=vsb.set,
                                    xscrollcommand=hsb.set,
@@ -391,6 +302,36 @@ class BillsTab(ctk.CTkFrame):
             state="normal" if self._app.can_navigate_left() else "disabled")
         self._right_btn.configure(
             state="normal" if self._app.can_navigate_right() else "disabled")
+
+        for w in self._metrics_panel.winfo_children():
+            w.destroy()
+
+        if annotated:
+            pad = {"padx": 18, "pady": 8}
+
+            row1 = ctk.CTkFrame(self._metrics_panel, fg_color="transparent")
+            row1.pack(fill="x", **pad)
+            for col in range(4):
+                row1.grid_columnconfigure(col, weight=1, uniform="k1")
+            row1.grid_rowconfigure(0, weight=1)
+
+            KPICard(row1, "Total Bills",
+                    str(summary.get("bill_count", 0)), C["blue"]).grid(
+                row=0, column=0, sticky="nsew", padx=(0, 6), pady=4)
+            KPICard(row1, "Total Due",
+                    _fmt(summary.get("total_due", 0)), C["red"],
+                    sub="Unpaid balance").grid(
+                row=0, column=1, sticky="nsew", padx=6, pady=4)
+            KPICard(row1, "Total Paid",
+                    _fmt(summary.get("total_paid", 0)), C["green"]).grid(
+                row=0, column=2, sticky="nsew", padx=6, pady=4)
+            overdue_n = summary.get("overdue_count", 0)
+            KPICard(row1, "Overdue",
+                    f"{overdue_n} bill{'s' if overdue_n != 1 else ''}",
+                    C["orange"] if overdue_n > 0 else C["muted"],
+                    sub=_fmt(summary.get("overdue_amount", 0)) if overdue_n > 0 else "All on time").grid(
+                row=0, column=3, sticky="nsew", padx=(6, 0), pady=4)
+
 
         self._tree.delete(*self._tree.get_children())
         self._selected_id = None
@@ -934,23 +875,18 @@ class MoneyTrackerApp(ctk.CTk):
                               segmented_button_unselected_hover_color=C["border"])
         tabs.pack(fill="both", expand=True)
         tabs.add("Dashboard")
-        tabs.add("Bills")
         tabs.add("Definitions")
 
-        self._dash    = DashboardTab(tabs.tab("Dashboard"))
-        self._dash.pack(fill="both", expand=True)
+        self._dashboard = CombinedDashboard(tabs.tab("Dashboard"), self)
+        self._dashboard.pack(fill="both", expand=True)
 
-        self._bills   = BillsTab(tabs.tab("Bills"), self)
-        self._bills.pack(fill="both", expand=True)
-
-        self._defs    = DefinitionsTab(tabs.tab("Definitions"), self)
+        self._defs = DefinitionsTab(tabs.tab("Definitions"), self)
         self._defs.pack(fill="both", expand=True)
 
     def refresh(self):
         annotated, summary = _load_and_annotate(self._current_month)
         definitions        = db.load_definitions(DB_PATH)
-        self._dash.refresh(annotated, summary, self._current_month)
-        self._bills.refresh(annotated, summary, self._current_month)
+        self._dashboard.refresh(annotated, summary, self._current_month)
         self._defs.refresh(definitions)
         self._update_status(annotated, summary)
 

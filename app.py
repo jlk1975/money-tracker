@@ -423,8 +423,15 @@ class CombinedDashboard(ctk.CTkFrame):
         self._tree.heading(self._sort_col, text=self._sort_col + arrow)
         items = [(self._tree.set(k, self._sort_col), k)
                  for k in self._tree.get_children("")]
-        items.sort(key=lambda x: self._sort_key(self._sort_col, x[0]),
-                   reverse=not self._sort_asc)
+        if self._sort_col == "Vibe":
+            set_items   = [(v, k) for v, k in items if v]
+            unset_items = [(v, k) for v, k in items if not v]
+            set_items.sort(key=lambda x: self._sort_key("Vibe", x[0]),
+                           reverse=not self._sort_asc)
+            items = set_items + unset_items
+        else:
+            items.sort(key=lambda x: self._sort_key(self._sort_col, x[0]),
+                       reverse=not self._sort_asc)
         for idx, (_, k) in enumerate(items):
             self._tree.move(k, "", idx)
 

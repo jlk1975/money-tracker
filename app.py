@@ -89,7 +89,7 @@ def _fmt(val):
 
 
 def _payment_emoji(mode):
-    return {"Auto Pay": "🤖", "Manual Pay": "✋"}.get(mode or "", "❓")
+    return {"Auto Pay": "🤖", "Manual Pay": "🔔"}.get(mode or "", "❓")
 
 
 def _vibe_emoji(vibe):

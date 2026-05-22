@@ -14,7 +14,9 @@ from datetime import date
 sys.path.insert(0, os.path.dirname(__file__))
 import db
 
-DB_PATH = os.path.join(os.path.dirname(__file__), "money_tracker.db")
+_DATA_DIR = os.path.join(os.path.expanduser("~"), ".local", "share", "money-tracker")
+os.makedirs(_DATA_DIR, exist_ok=True)
+DB_PATH = os.path.join(_DATA_DIR, "money_tracker.db")
 
 # AdHoc bill targets the current month so it shows up immediately
 _today = date.today()

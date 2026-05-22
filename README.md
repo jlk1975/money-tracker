@@ -1,43 +1,30 @@
-# Money Tracker
+# Bill Tracker
 
 A personal household bill tracker built with Python and customtkinter. Track recurring and one-off bills, manage funding and payment status, and get a monthly dashboard overview.
 
-## Requirements
-
-- Python 3.10+
-- Install dependencies:
+## Quick start (Linux Mint / Ubuntu)
 
 ```bash
-pip install -r requirements.txt
+git clone https://github.com/jlk1975/money-tracker.git
+cd money-tracker
+./start.sh
 ```
 
-## Getting Started
+That's it. `start.sh` installs dependencies, loads sample data, and opens the app.
 
-### 1. (Optional) Load sample data
+> **Note:** The script will `sudo apt install python3-tk` if tkinter isn't already present — you may be prompted for your password on first run.
 
-To explore the app with example bills before entering your own:
+## Wipe sample data and enter your own bills
 
-```bash
-python3 seed.py
-```
-
-This populates the database with generic sample household bills (rent, utilities, insurance, etc.) so you can see what the app looks like with real data.
-
-### 2. Run the app
-
-```bash
-python3 app.py
-```
-
-### 3. Wipe sample data and enter your own bills
-
-When you're ready to use the app for real, wipe the sample data and start fresh:
+When you're ready to use the app for real:
 
 ```bash
 python3 wipe.py
 ```
 
-Then go to the **Definitions** tab in the app and add your own bills.
+Then open the app, go to the **Definitions** tab, and add your own bills.
+
+---
 
 ## Usage
 

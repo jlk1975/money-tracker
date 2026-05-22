@@ -4,7 +4,7 @@ set -e
 # Ensure system packages that pip can't provide are installed
 MISSING=()
 python3 -c "import tkinter" 2>/dev/null || MISSING+=(python3-tk)
-python3 -m venv --help &>/dev/null || MISSING+=(python3-venv)
+python3 -c "import ensurepip" 2>/dev/null || MISSING+=(python3-venv)
 
 if [ ${#MISSING[@]} -gt 0 ]; then
     echo "Installing system packages (requires sudo): ${MISSING[*]}"

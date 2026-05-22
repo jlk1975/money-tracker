@@ -7,6 +7,7 @@ import tkinter as tk
 from tkinter import ttk
 import customtkinter as ctk
 import os
+import json
 import calendar
 from datetime import date
 
@@ -16,7 +17,8 @@ import calc
 ctk.set_appearance_mode("dark")
 ctk.set_default_color_theme("blue")
 
-DB_PATH = os.path.join(os.path.dirname(__file__), "money_tracker.db")
+DB_PATH       = os.path.join(os.path.dirname(__file__), "money_tracker.db")
+SETTINGS_PATH = os.path.join(os.path.dirname(__file__), "settings.json")
 
 # ── Palette ───────────────────────────────────────────────────────────────────
 C = {
@@ -316,6 +318,14 @@ class CombinedDashboard(ctk.CTkFrame):
 
         self._tree.bind("<<TreeviewSelect>>", self._on_select)
         self._tree.bind("<Double-1>", lambda _: self._edit())
+
+    def get_column_widths(self):
+        return {col: self._tree.column(col, "width") for col, _ in GRID_COLUMNS}
+
+    def set_column_widths(self, widths):
+        for col, _ in GRID_COLUMNS:
+            if col in widths:
+                self._tree.column(col, width=widths[col])
 
     def refresh(self, annotated, summary, month_key):
         year, month = map(int, month_key.split("-"))
@@ -936,11 +946,17 @@ class MoneyTrackerApp(ctk.CTk):
 
         db.init_db(DB_PATH)
 
+        self._settings = self._load_settings()
         today = date.today()
-        self._current_month = f"{today.year:04d}-{today.month:02d}"
+        default_month = f"{today.year:04d}-{today.month:02d}"
+        self._current_month = self._settings.get("last_month", default_month)
         db.generate_month_instances(self._current_month, DB_PATH)
 
         self._build_ui()
+        self.protocol("WM_DELETE_WINDOW", self._on_close)
+        saved_widths = self._settings.get("column_widths", {})
+        if saved_widths:
+            self.after(0, lambda: self._dashboard.set_column_widths(saved_widths))
         self.refresh()
 
     def current_month(self):
@@ -1021,6 +1037,27 @@ class MoneyTrackerApp(ctk.CTk):
             f"Due: {_fmt(summary['total_due'])}  |  "
             f"Paid: {_fmt(summary['total_paid'])}"
         )
+
+    def _load_settings(self):
+        try:
+            with open(SETTINGS_PATH) as f:
+                return json.load(f)
+        except Exception:
+            return {}
+
+    def _save_settings(self):
+        try:
+            with open(SETTINGS_PATH, "w") as f:
+                json.dump({
+                    "last_month":    self._current_month,
+                    "column_widths": self._dashboard.get_column_widths(),
+                }, f, indent=2)
+        except Exception:
+            pass
+
+    def _on_close(self):
+        self._save_settings()
+        self.destroy()
 
     def flash(self, msg, duration_ms=3000):
         old = self._status_var.get()

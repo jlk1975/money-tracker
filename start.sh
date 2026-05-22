@@ -7,11 +7,17 @@ if ! python3 -c "import tkinter" 2>/dev/null; then
     sudo apt-get install -y python3-tk
 fi
 
-# Install Python dependencies
-python3 -m pip install -q -r requirements.txt
+# Create a virtualenv on first run
+if [ ! -d ".venv" ]; then
+    echo "Creating virtual environment..."
+    python3 -m venv .venv
+fi
+
+# Install Python dependencies into the venv
+.venv/bin/pip install -q -r requirements.txt
 
 # Seed sample data (safe to re-run — aborts silently if data already exists)
-python3 seed.py
+.venv/bin/python seed.py
 
 # Launch the app
-python3 app.py
+.venv/bin/python app.py

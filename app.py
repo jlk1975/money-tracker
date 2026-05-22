@@ -300,8 +300,17 @@ class CombinedDashboard(ctk.CTkFrame):
             ctk.CTkButton(self._toolbar, text=label, width=width, height=30,
                           command=cmd).pack(side="left", padx=6, pady=7)
 
-        self._tree_container = tk.Frame(self, bg="#1a1a2e")
-        self._tree_container.pack(fill="both", expand=True)
+        self._bottom = tk.Frame(self, bg="#1a1a2e")
+        self._bottom.pack(fill="both", expand=True)
+
+        self._sidebar = ctk.CTkFrame(self._bottom, width=210, fg_color=C["card"],
+                                      corner_radius=0, border_width=1,
+                                      border_color=C["border"])
+        self._sidebar.pack(side="right", fill="y")
+        self._sidebar.pack_propagate(False)
+
+        self._tree_container = tk.Frame(self._bottom, bg="#1a1a2e")
+        self._tree_container.pack(side="left", fill="both", expand=True)
 
         style = ttk.Style()
         style.theme_use("clam")
@@ -350,6 +359,65 @@ class CombinedDashboard(ctk.CTkFrame):
             self._metrics_panel.pack(fill="x", before=self._toolbar)
             self._toggle_btn.configure(text="▲ Hide Summary")
         self._metrics_visible = not self._metrics_visible
+
+    def _refresh_sidebar(self, annotated):
+        for w in self._sidebar.winfo_children():
+            w.destroy()
+        if not annotated:
+            return
+
+        def _section(title):
+            ctk.CTkLabel(self._sidebar, text=title,
+                         font=ctk.CTkFont(size=11, weight="bold"),
+                         text_color=C["heading"], anchor="w").pack(
+                fill="x", padx=14, pady=(14, 4))
+
+        def _row(label, amount, color=None):
+            f = ctk.CTkFrame(self._sidebar, fg_color="transparent")
+            f.pack(fill="x", padx=14, pady=2)
+            ctk.CTkLabel(f, text=label, font=ctk.CTkFont(size=12),
+                         text_color=C["text"], anchor="w").pack(side="left")
+            ctk.CTkLabel(f, text=_fmt(amount),
+                         font=ctk.CTkFont(size=12),
+                         text_color=color or C["muted"], anchor="e").pack(side="right")
+
+        def _divider():
+            tk.Frame(self._sidebar, height=1, bg=C["border"]).pack(
+                fill="x", padx=14, pady=(8, 0))
+
+        # ── Vibe breakdown ────────────────────────────────────────────
+        vibe_totals = {}
+        for inst in annotated:
+            v = _vibe_emoji(inst.get("vibe", ""))
+            vibe_totals[v] = vibe_totals.get(v, 0) + inst.get("amount", 0)
+
+        _section("Spending by Vibe")
+        for emoji, label, color in [
+            ("🌟", "Good",    C["green"]),
+            ("🤷", "Meh",    C["blue"]),
+            ("💔", "Regret", C["red"]),
+        ]:
+            if emoji in vibe_totals:
+                _row(f"{emoji}  {label}", vibe_totals[emoji], color)
+        if "" in vibe_totals:
+            _row("   Not Set", vibe_totals[""])
+
+        # ── Pay Mode breakdown ────────────────────────────────────────
+        _divider()
+        pm_totals = {}
+        for inst in annotated:
+            pm = _payment_emoji(inst.get("payment_mode", ""))
+            pm_totals[pm] = pm_totals.get(pm, 0) + inst.get("amount", 0)
+
+        _section("By Pay Mode")
+        for emoji, label, color in [
+            ("🤖", "Auto Pay", C["teal"]),
+            ("🔔", "Manual",   C["yellow"]),
+        ]:
+            if emoji in pm_totals:
+                _row(f"{emoji}  {label}", pm_totals[emoji], color)
+        if "❓" in pm_totals:
+            _row("   Not Set", pm_totals["❓"])
 
     def get_column_widths(self):
         return {col: self._tree.column(col, "width") for col, _ in GRID_COLUMNS}
@@ -428,6 +496,7 @@ class CombinedDashboard(ctk.CTkFrame):
                               values=_merge_row(inst), tags=(_inst_tag(inst),))
         if self._sort_col:
             self._apply_sort()
+        self._refresh_sidebar(annotated)
 
     def _sort_by(self, col):
         if self._sort_col == col:

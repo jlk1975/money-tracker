@@ -1,6 +1,6 @@
 """
 app.py — Money Tracker main application.
-Two tabs: Dashboard (summary + nav + bill grid), Definitions (master bill template list).
+Two tabs: Bill Dashboard (summary + nav + bill grid), Bill Definitions (master bill template list).
 """
 
 import tkinter as tk
@@ -1068,13 +1068,13 @@ class MoneyTrackerApp(ctk.CTk):
                               segmented_button_unselected_color=C["card2"],
                               segmented_button_unselected_hover_color=C["border"])
         tabs.pack(fill="both", expand=True)
-        tabs.add("Dashboard")
-        tabs.add("Definitions")
+        tabs.add("Bill Dashboard")
+        tabs.add("Bill Definitions")
 
-        self._dashboard = CombinedDashboard(tabs.tab("Dashboard"), self)
+        self._dashboard = CombinedDashboard(tabs.tab("Bill Dashboard"), self)
         self._dashboard.pack(fill="both", expand=True)
 
-        self._defs = DefinitionsTab(tabs.tab("Definitions"), self)
+        self._defs = DefinitionsTab(tabs.tab("Bill Definitions"), self)
         self._defs.pack(fill="both", expand=True)
 
     def refresh(self):

@@ -40,7 +40,6 @@ def init_db(db_path=DEFAULT_DB):
             CREATE TABLE IF NOT EXISTS bill_definitions (
                 id             INTEGER PRIMARY KEY AUTOINCREMENT,
                 sort_order     INTEGER NOT NULL DEFAULT 0,
-                account        TEXT    NOT NULL DEFAULT '',
                 description    TEXT    NOT NULL DEFAULT '',
                 frequency      TEXT    NOT NULL DEFAULT 'Monthly',
                 typical_amount REAL    NOT NULL DEFAULT 0,
@@ -57,7 +56,6 @@ def init_db(db_path=DEFAULT_DB):
                 row_order      INTEGER NOT NULL,
                 definition_id  INTEGER,
                 month_key      TEXT    NOT NULL DEFAULT '',
-                account        TEXT    NOT NULL DEFAULT '',
                 description    TEXT    NOT NULL DEFAULT '',
                 status         TEXT    NOT NULL DEFAULT 'Due',
                 due_date       TEXT    NOT NULL DEFAULT '',

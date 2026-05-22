@@ -38,14 +38,12 @@ python3 wipe.py    # interactive: wipe instances only, or everything
 - `months_active` — comma-separated month numbers for Annual/Semi-Annual/Quarterly (e.g. `"3,9"`)
 - `adhoc_month` — YYYY-MM target for AdHoc bills (e.g. `"2026-06"`)
 - `notes`, `active` (0/1), `sort_order`
-- `account` column exists in DB for backward compat but is unused by the app
 
 **`bill_instances`** — one row per bill per month
 - `id`, `definition_id`, `month_key` (YYYY-MM), `description`
 - `status` (Due/Paid), `due_date` (MM/DD/YYYY), `amount`, `frequency`
 - `date_paid`, `notes`, `row_order`
 - `funded` (0/1) — whether the bill has been funded for the month (default 0)
-- `account` column exists in DB for backward compat but is unused by the app
 
 ## Key concepts
 

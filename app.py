@@ -50,16 +50,17 @@ ACCOUNT_COLORS = {
 
 # ── Bills tab grid ────────────────────────────────────────────────────────────
 GRID_COLUMNS = [
+    ("✓",          40),
+    ("Status",     70),
     ("Account",   100),
     ("Expense",   240),
-    ("Status",     70),
     ("Due Date",   90),
     ("Amount",     90),
     ("Frequency",  90),
     ("Date Paid",  90),
     ("Notes",     180),
 ]
-LEFT_ALIGN = {"Account", "Expense", "Status", "Due Date", "Frequency", "Date Paid", "Notes"}
+LEFT_ALIGN = {"Status", "Account", "Expense", "Due Date", "Frequency", "Date Paid", "Notes"}
 
 # ── Definitions tab grid ──────────────────────────────────────────────────────
 DEF_COLUMNS = [
@@ -113,9 +114,10 @@ def _load_and_annotate(month_key):
 
 def _merge_row(inst):
     return (
+        "✓" if inst.get("status") == "Paid" else "",
+        inst.get("status", ""),
         inst.get("account", ""),
         inst.get("description", ""),
-        inst.get("status", ""),
         inst.get("due_date", ""),
         _fmt(inst.get("amount")),
         inst.get("frequency", ""),

@@ -299,6 +299,8 @@ class CombinedDashboard(ctk.CTkFrame):
         self._sort_col = None
         self._sort_asc = True
         self._metrics_visible = True
+        self._vibe_filter = set()
+        self._vibe_btns = {}
         self._build()
 
     def _build(self):
@@ -322,6 +324,13 @@ class CombinedDashboard(ctk.CTkFrame):
         ctk.CTkButton(self._nav_bar, text="This Month", width=90, height=28,
                       command=self._app.navigate_to_today).pack(
             side="left", padx=(10, 0), pady=7)
+
+        for emoji, color in [("🌟", C["green"]), ("🤷", C["blue"]), ("💔", C["red"])]:
+            btn = ctk.CTkButton(self._nav_bar, text=emoji, width=36, height=28,
+                                fg_color=C["border"], hover_color=C["card2"],
+                                command=lambda e=emoji: self._toggle_vibe_filter(e))
+            btn.pack(side="left", padx=(6, 0), pady=7)
+            self._vibe_btns[emoji] = (btn, color)
 
         self._toggle_btn = ctk.CTkButton(self._nav_bar, text="▲ Hide Summary",
                                           width=120, height=28,
@@ -406,6 +415,15 @@ class CombinedDashboard(ctk.CTkFrame):
             self._toggle_btn.configure(text="▲ Hide Summary")
         self._metrics_visible = not self._metrics_visible
 
+    def _toggle_vibe_filter(self, emoji):
+        if emoji in self._vibe_filter:
+            self._vibe_filter.discard(emoji)
+        else:
+            self._vibe_filter.add(emoji)
+        for e, (btn, color) in self._vibe_btns.items():
+            btn.configure(fg_color=color if e in self._vibe_filter else C["border"])
+        self._app.refresh()
+
     def _refresh_sidebar(self, annotated):
         for w in self._sidebar.winfo_children():
             w.destroy()
@@ -481,10 +499,17 @@ class CombinedDashboard(ctk.CTkFrame):
         self._right_btn.configure(
             state="normal" if self._app.can_navigate_right() else "disabled")
 
+        if self._vibe_filter:
+            display = [b for b in annotated
+                       if _vibe_emoji(b.get("vibe", "")) in self._vibe_filter]
+            summary = calc.calculate_summary(display)
+        else:
+            display = annotated
+
         for w in self._metrics_panel.winfo_children():
             w.destroy()
 
-        if annotated:
+        if display:
             pad = {"padx": 18, "pady": 4}
 
             row1 = ctk.CTkFrame(self._metrics_panel, fg_color="transparent")
@@ -494,7 +519,7 @@ class CombinedDashboard(ctk.CTkFrame):
             row1.grid_rowconfigure(0, weight=1)
 
             _vibe_counts = {}
-            for _b in annotated:
+            for _b in display:
                 _v = _vibe_emoji(_b.get("vibe", ""))
                 _vibe_counts[_v] = _vibe_counts.get(_v, 0) + 1
             VibeBarsCard(row1, _vibe_counts).grid(
@@ -520,32 +545,32 @@ class CombinedDashboard(ctk.CTkFrame):
                 row2.grid_columnconfigure(col, weight=1, uniform="k2")
             row2.grid_rowconfigure(0, weight=1)
 
-            _funded_not_paid = sum(b.get("amount", 0) for b in annotated
+            _funded_not_paid = sum(b.get("amount", 0) for b in display
                                    if b.get("funded") and b.get("status") != "Paid")
             KPICard(row2, "Funded Not Paid", _fmt(_funded_not_paid), C["yellow"]).grid(
                 row=0, column=0, sticky="nsew", padx=(0, 6), pady=4)
-            _funded_total = sum(b.get("amount", 0) for b in annotated if b.get("funded"))
-            _funded_total2  = sum(b.get("amount", 0) for b in annotated if b.get("funded"))
-            _total2         = sum(b.get("amount", 0) for b in annotated)
+            _funded_total = sum(b.get("amount", 0) for b in display if b.get("funded"))
+            _funded_total2  = sum(b.get("amount", 0) for b in display if b.get("funded"))
+            _total2         = sum(b.get("amount", 0) for b in display)
             _fpct           = (_funded_total2 / _total2) if _total2 else 0
             ProgressCard(row2, "Funding Progress", _fpct,
                          sub=f"{_fpct*100:.0f}%  —  {_fmt(_funded_total2)} of {_fmt(_total2)}").grid(
                 row=0, column=1, sticky="nsew", padx=6, pady=4)
             KPICard(row2, "Funded", _fmt(_funded_total), C["green"]).grid(
                 row=0, column=2, sticky="nsew", padx=6, pady=4)
-            _not_funded_total = sum(b.get("amount", 0) for b in annotated if not b.get("funded"))
+            _not_funded_total = sum(b.get("amount", 0) for b in display if not b.get("funded"))
             KPICard(row2, "Not Funded", _fmt(_not_funded_total), C["red"]).grid(
                 row=0, column=3, sticky="nsew", padx=(6, 0), pady=4)
 
 
         self._tree.delete(*self._tree.get_children())
         self._selected_id = None
-        for inst in annotated:
+        for inst in display:
             self._tree.insert("", "end", iid=str(inst["id"]),
                               values=_merge_row(inst), tags=(_inst_tag(inst),))
         if self._sort_col:
             self._apply_sort()
-        self._refresh_sidebar(annotated)
+        self._refresh_sidebar(display)
 
     def _sort_by(self, col):
         if self._sort_col == col:

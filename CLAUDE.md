@@ -63,6 +63,7 @@ python3 wipe.py    # interactive: wipe instances only, or everything
   - Row 1: `VibeBarsCard` (horizontal bar chart by vibe emoji), Payment Progress, Paid, Due
   - Row 2: Funded Not Paid, Funding Progress, Funded, Not Funded
   - Right sidebar: Spending by Vibe + By Pay Mode breakdowns
+  - Nav bar vibe filter buttons (🌟 🤷 💔): toggle to filter table + all 8 KPI widgets to selected vibes; none selected = show all; stored in `_vibe_filter` set on `CombinedDashboard`
 - **VibeBarsCard**: replaces old "Total Bills" KPI; tk.Canvas with `height=1` hint (prevents Tk 150px default); draws horizontal bars — emoji left, bar, count right; bars spread evenly to fill card height via `_paint` on `<Configure>`
 - **`_draw` conflict**: `ctk.CTkFrame` calls `self._draw()` internally — never name a canvas paint method `_draw` in a CTkFrame subclass; use `_paint` instead
 

@@ -168,7 +168,24 @@ def _merge_defn_row(defn):
     )
 
 
-# ── KPI Card ──────────────────────────────────────────────────────────────────
+# ── KPI / Progress Cards ──────────────────────────────────────────────────────
+
+class ProgressCard(ctk.CTkFrame):
+    def __init__(self, parent, label, progress, sub=None, **kw):
+        super().__init__(parent, fg_color=C["card"], corner_radius=10,
+                         border_width=1, border_color=C["border"], **kw)
+        self.grid_columnconfigure(0, weight=1)
+        ctk.CTkLabel(self, text=label, font=ctk.CTkFont(size=12),
+                     text_color=C["muted"], anchor="w").grid(
+            row=0, column=0, sticky="ew", padx=14, pady=(12, 4))
+        bar = ctk.CTkProgressBar(self, progress_color=C["green"],
+                                  fg_color=C["border"])
+        bar.set(max(0.0, min(1.0, progress)))
+        bar.grid(row=1, column=0, sticky="ew", padx=14, pady=(0, 4))
+        ctk.CTkLabel(self, text=sub or "", font=ctk.CTkFont(size=11),
+                     text_color=C["muted"], anchor="w").grid(
+            row=2, column=0, sticky="ew", padx=14, pady=(0, 10))
+
 
 class KPICard(ctk.CTkFrame):
     def __init__(self, parent, label, value_str, value_color=None, sub=None, **kw):
@@ -335,6 +352,26 @@ class CombinedDashboard(ctk.CTkFrame):
                     f"{overdue_n} bill{'s' if overdue_n != 1 else ''}",
                     C["orange"] if overdue_n > 0 else C["muted"],
                     sub=_fmt(summary.get("overdue_amount", 0)) if overdue_n > 0 else "All on time").grid(
+                row=0, column=3, sticky="nsew", padx=(6, 0), pady=4)
+
+            row2 = ctk.CTkFrame(self._metrics_panel, fg_color="transparent")
+            row2.pack(fill="x", **pad)
+            for col in range(4):
+                row2.grid_columnconfigure(col, weight=1, uniform="k2")
+            row2.grid_rowconfigure(0, weight=1)
+
+            _paid  = summary.get("total_paid", 0)
+            _due   = summary.get("total_due",  0)
+            _total = _paid + _due
+            _pct   = (_paid / _total) if _total else 0
+            ProgressCard(row2, "Payment Progress", _pct,
+                         sub=f"{_pct*100:.0f}%  —  {_fmt(_paid)} of {_fmt(_total)}").grid(
+                row=0, column=0, sticky="nsew", padx=(0, 6), pady=4)
+            KPICard(row2, "TBD2", "TBD2").grid(
+                row=0, column=1, sticky="nsew", padx=6, pady=4)
+            KPICard(row2, "TBD3", "TBD3").grid(
+                row=0, column=2, sticky="nsew", padx=6, pady=4)
+            KPICard(row2, "TBD4", "TBD4").grid(
                 row=0, column=3, sticky="nsew", padx=(6, 0), pady=4)
 
 

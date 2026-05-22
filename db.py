@@ -232,23 +232,31 @@ def _should_include_definition(defn, year, month):
 def generate_month_instances(month_key, db_path=DEFAULT_DB):
     """
     Auto-generate bill instances for month_key from active definitions.
-    No-op if instances already exist for that month.
+    Additive: skips definitions that already have an instance in this month.
     """
     year, month = map(int, month_key.split("-"))
 
     with _conn(db_path) as con:
-        existing = con.execute(
-            "SELECT COUNT(*) FROM bill_instances WHERE month_key=?", (month_key,)
-        ).fetchone()[0]
-        if existing > 0:
-            return
+        existing_def_ids = {
+            r[0] for r in con.execute(
+                "SELECT definition_id FROM bill_instances "
+                "WHERE month_key=? AND definition_id IS NOT NULL",
+                (month_key,)
+            ).fetchall()
+        }
+
+        row_order = con.execute(
+            "SELECT COALESCE(MAX(row_order), 0) FROM bill_instances WHERE month_key=?",
+            (month_key,)
+        ).fetchone()[0] + 1
 
         defs = con.execute(
             "SELECT * FROM bill_definitions WHERE active=1 ORDER BY sort_order, id"
         ).fetchall()
 
-        row_order = 1
         for d in [dict(r) for r in defs]:
+            if d["id"] in existing_def_ids:
+                continue
             if not _should_include_definition(d, year, month):
                 continue
             due_day = min(d.get("due_day", 1), calendar.monthrange(year, month)[1])

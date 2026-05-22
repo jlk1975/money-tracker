@@ -829,6 +829,7 @@ class DefnDialog(ctk.CTkToplevel):
             db.insert_definition(data, DB_PATH)
         else:
             db.update_definition(self._defn["id"], data, DB_PATH)
+        db.generate_month_instances(self._app.current_month(), DB_PATH)
         self.destroy()
         self._app.refresh()
 
@@ -898,6 +899,7 @@ class MoneyTrackerApp(ctk.CTk):
         months = db.get_months_with_instances(DB_PATH)
         idx = months.index(self._current_month)
         self._current_month = months[idx - 1]
+        db.generate_month_instances(self._current_month, DB_PATH)
         self.refresh()
 
     def navigate_right(self):

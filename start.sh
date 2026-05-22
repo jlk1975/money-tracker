@@ -1,14 +1,19 @@
 #!/bin/bash
 set -e
 
-# Ensure tkinter is available (not installable via pip — needs the system package)
-if ! python3 -c "import tkinter" 2>/dev/null; then
-    echo "Installing python3-tk (requires sudo)..."
-    sudo apt-get install -y python3-tk
+# Ensure system packages that pip can't provide are installed
+MISSING=()
+python3 -c "import tkinter" 2>/dev/null || MISSING+=(python3-tk)
+python3 -m venv --help &>/dev/null || MISSING+=(python3-venv)
+
+if [ ${#MISSING[@]} -gt 0 ]; then
+    echo "Installing system packages (requires sudo): ${MISSING[*]}"
+    sudo apt-get install -y "${MISSING[@]}"
 fi
 
-# Create a virtualenv on first run
-if [ ! -d ".venv" ]; then
+# Create a virtualenv on first run (or if a previous attempt left a broken one)
+if [ ! -f ".venv/bin/python" ]; then
+    rm -rf .venv
     echo "Creating virtual environment..."
     python3 -m venv .venv
 fi

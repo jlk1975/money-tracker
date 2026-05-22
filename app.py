@@ -43,10 +43,13 @@ C = {
 STATUSES      = ["Due", "Paid"]
 FREQUENCIES   = ["Monthly", "AdHoc", "Annual", "Semi-Annual", "Quarterly", "Bi-Weekly", "Weekly"]
 PAYMENT_MODES = ["Not Set", "Auto Pay", "Manual Pay"]
+VIBES         = ["—", "🌟", "🤷", "💔"]
+_VIBE_LEGACY  = {"Good": "🌟", "Meh": "🤷", "Regret": "💔"}
 MONTH_NAMES   = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"]
 
 # ── Bills tab grid ────────────────────────────────────────────────────────────
 GRID_COLUMNS = [
+    ("Vibe",       50),
     ("✓",          40),
     ("Status",     70),
     ("Pay Mode",   65),
@@ -61,6 +64,7 @@ LEFT_ALIGN = {"Status", "Expense", "Due Date", "Frequency", "Date Paid"}
 
 # ── Definitions tab grid ──────────────────────────────────────────────────────
 DEF_COLUMNS = [
+    ("Vibe",        50),
     ("Active",      55),
     ("Description",230),
     ("Frequency",  100),
@@ -86,6 +90,11 @@ def _fmt(val):
 
 def _payment_emoji(mode):
     return {"Auto Pay": "🤖", "Manual Pay": "✋"}.get(mode or "", "❓")
+
+
+def _vibe_emoji(vibe):
+    v = _VIBE_LEGACY.get(vibe, vibe)
+    return v if v in ("🌟", "🤷", "💔") else ""
 
 
 def _month_label(month_key):
@@ -115,6 +124,7 @@ def _load_and_annotate(month_key):
 
 def _merge_row(inst):
     return (
+        _vibe_emoji(inst.get("vibe", "")),
         "✓" if inst.get("status") == "Paid" else "",
         inst.get("status", ""),
         _payment_emoji(inst.get("payment_mode", "")),
@@ -158,6 +168,7 @@ def _format_due_in(defn):
 
 def _merge_defn_row(defn):
     return (
+        _vibe_emoji(defn.get("vibe", "")),
         "✓" if defn.get("active") else "✗",
         defn.get("description", ""),
         defn.get("frequency", ""),
@@ -418,6 +429,8 @@ class CombinedDashboard(ctk.CTkFrame):
             self._tree.move(k, "", idx)
 
     def _sort_key(self, col, val):
+        if col == "Vibe":
+            return {"🌟": 0, "🤷": 1, "💔": 2}.get(val, 3)
         if col == "Amount":
             try:
                 return float(val.replace("$", "").replace(",", ""))
@@ -656,7 +669,7 @@ class InstDialog(ctk.CTkToplevel):
 
         title = "Add Bill" if mode == "add" else "Edit Bill"
         self.title(title)
-        self.geometry("440x620")
+        self.geometry("440x660")
         self.resizable(False, False)
         self.after(100, self.grab_set)
         self.after(100, self.focus_set)
@@ -668,10 +681,15 @@ class InstDialog(ctk.CTkToplevel):
         self._vars = {}
         _pm_raw = inst.get("payment_mode", "") if inst else ""
         _pm_default = _pm_raw if _pm_raw in ("Auto Pay", "Manual Pay") else "Not Set"
+        _vibe_raw = inst.get("vibe", "") if inst else ""
+        _vibe_default = _VIBE_LEGACY.get(_vibe_raw, _vibe_raw) if _vibe_raw else "—"
+        if _vibe_default not in ("🌟", "🤷", "💔"):
+            _vibe_default = "—"
         fields = [
             ("Expense",        "entry", inst["description"] if inst else ""),
             ("Status",         "combo", inst["status"]      if inst else STATUSES[0]),
             ("Payment Mode",   "combo", _pm_default),
+            ("Vibe",           "combo", _vibe_default),
             ("Due Date",       "entry", inst["due_date"]    if inst else ""),
             ("Amount",         "entry", str(inst["amount"]) if inst else ""),
             ("Frequency",      "combo", inst["frequency"]   if inst else FREQUENCIES[0]),
@@ -690,6 +708,8 @@ class InstDialog(ctk.CTkToplevel):
                     choices = STATUSES
                 elif label == "Payment Mode":
                     choices = PAYMENT_MODES
+                elif label == "Vibe":
+                    choices = VIBES
                 else:
                     choices = FREQUENCIES
                 ctk.CTkOptionMenu(row, values=choices, variable=var,
@@ -723,12 +743,14 @@ class InstDialog(ctk.CTkToplevel):
             self._err.configure(text="Amount must be a number.")
             return
 
-        _pm = self._vars["Payment Mode"].get()
+        _pm   = self._vars["Payment Mode"].get()
+        _vibe = self._vars["Vibe"].get()
         data = {
             "month_key":    self._month_key,
             "description":  desc,
             "status":       self._vars["Status"].get(),
-            "payment_mode": "" if _pm == "Not Set" else _pm,
+            "payment_mode": "" if _pm   == "Not Set" else _pm,
+            "vibe":         "" if _vibe == "—" else _vibe,
             "due_date":     due_date,
             "amount":       amount,
             "frequency":    self._vars["Frequency"].get(),
@@ -754,7 +776,7 @@ class DefnDialog(ctk.CTkToplevel):
 
         title = "Add Definition" if mode == "add" else "Edit Definition"
         self.title(title)
-        self.geometry("480x650")
+        self.geometry("480x700")
         self.resizable(False, False)
         self.after(100, self.grab_set)
         self.after(100, self.focus_set)
@@ -814,6 +836,19 @@ class DefnDialog(ctk.CTkToplevel):
         ctk.CTkOptionMenu(pm_row, values=PAYMENT_MODES, variable=self._pm_var,
                           width=270).pack(side="left")
         self._vars["Payment Mode"] = self._pm_var
+
+        # Vibe
+        vibe_row = ctk.CTkFrame(self, fg_color="transparent")
+        vibe_row.pack(fill="x", padx=16, pady=5)
+        ctk.CTkLabel(vibe_row, text="Vibe", width=110, anchor="w").pack(side="left")
+        _vibe_raw = defn.get("vibe", "") if defn else ""
+        _vibe_default = _VIBE_LEGACY.get(_vibe_raw, _vibe_raw) if _vibe_raw else "—"
+        if _vibe_default not in ("🌟", "🤷", "💔"):
+            _vibe_default = "—"
+        self._vibe_var = tk.StringVar(value=_vibe_default)
+        ctk.CTkOptionMenu(vibe_row, values=VIBES, variable=self._vibe_var,
+                          width=270).pack(side="left")
+        self._vars["Vibe"] = self._vibe_var
 
         # Notes
         notes_row = ctk.CTkFrame(self, fg_color="transparent")
@@ -898,7 +933,8 @@ class DefnDialog(ctk.CTkToplevel):
                 return
             months_a = due_in
 
-        _pm = self._vars["Payment Mode"].get()
+        _pm   = self._vars["Payment Mode"].get()
+        _vibe = self._vars["Vibe"].get()
         data = {
             "description":    desc,
             "frequency":      freq,
@@ -908,7 +944,8 @@ class DefnDialog(ctk.CTkToplevel):
             "adhoc_month":    adhoc_m,
             "active":         self._defn["active"] if self._defn else 1,
             "notes":          self._vars["Notes"].get().strip(),
-            "payment_mode":   "" if _pm == "Not Set" else _pm,
+            "payment_mode":   "" if _pm   == "Not Set" else _pm,
+            "vibe":           "" if _vibe == "—" else _vibe,
         }
         if self._mode == "add":
             db.insert_definition(data, DB_PATH)

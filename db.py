@@ -49,7 +49,8 @@ def init_db(db_path=DEFAULT_DB):
                 adhoc_month    TEXT    NOT NULL DEFAULT '',
                 active         INTEGER NOT NULL DEFAULT 1,
                 notes          TEXT    NOT NULL DEFAULT '',
-                payment_mode   TEXT    NOT NULL DEFAULT ''
+                payment_mode   TEXT    NOT NULL DEFAULT '',
+                vibe           TEXT    NOT NULL DEFAULT ''
             )
         """)
         con.execute("""
@@ -66,7 +67,8 @@ def init_db(db_path=DEFAULT_DB):
                 date_paid      TEXT    NOT NULL DEFAULT '',
                 notes          TEXT    NOT NULL DEFAULT '',
                 funded         INTEGER NOT NULL DEFAULT 0,
-                payment_mode   TEXT    NOT NULL DEFAULT ''
+                payment_mode   TEXT    NOT NULL DEFAULT '',
+                vibe           TEXT    NOT NULL DEFAULT ''
             )
         """)
         try:
@@ -84,6 +86,18 @@ def init_db(db_path=DEFAULT_DB):
         try:
             con.execute(
                 "ALTER TABLE bill_instances ADD COLUMN payment_mode TEXT NOT NULL DEFAULT ''"
+            )
+        except Exception:
+            pass
+        try:
+            con.execute(
+                "ALTER TABLE bill_definitions ADD COLUMN vibe TEXT NOT NULL DEFAULT ''"
+            )
+        except Exception:
+            pass
+        try:
+            con.execute(
+                "ALTER TABLE bill_instances ADD COLUMN vibe TEXT NOT NULL DEFAULT ''"
             )
         except Exception:
             pass
@@ -109,8 +123,8 @@ def insert_definition(defn, db_path=DEFAULT_DB):
         cur = con.execute("""
             INSERT INTO bill_definitions
                 (sort_order, description, frequency, typical_amount,
-                 due_day, months_active, adhoc_month, active, notes, payment_mode)
-            VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?, ?)
+                 due_day, months_active, adhoc_month, active, notes, payment_mode, vibe)
+            VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?)
         """, (
             max_order + 1,
             defn.get("description", ""),
@@ -121,6 +135,7 @@ def insert_definition(defn, db_path=DEFAULT_DB):
             defn.get("adhoc_month", ""),
             defn.get("notes", ""),
             defn.get("payment_mode", ""),
+            defn.get("vibe", ""),
         ))
         return cur.lastrowid
 
@@ -131,7 +146,7 @@ def update_definition(defn_id, defn, db_path=DEFAULT_DB):
         con.execute("""
             UPDATE bill_definitions
             SET description=?, frequency=?, typical_amount=?,
-                due_day=?, months_active=?, adhoc_month=?, active=?, notes=?, payment_mode=?
+                due_day=?, months_active=?, adhoc_month=?, active=?, notes=?, payment_mode=?, vibe=?
             WHERE id=?
         """, (
             defn.get("description", ""),
@@ -143,11 +158,12 @@ def update_definition(defn_id, defn, db_path=DEFAULT_DB):
             defn.get("active", 1),
             defn.get("notes", ""),
             defn.get("payment_mode", ""),
+            defn.get("vibe", ""),
             defn_id,
         ))
         con.execute(
-            "UPDATE bill_instances SET payment_mode=? WHERE definition_id=?",
-            (defn.get("payment_mode", ""), defn_id)
+            "UPDATE bill_instances SET payment_mode=?, vibe=? WHERE definition_id=?",
+            (defn.get("payment_mode", ""), defn.get("vibe", ""), defn_id)
         )
 
 
@@ -179,8 +195,8 @@ def insert_instance(instance, db_path=DEFAULT_DB):
         cur = con.execute("""
             INSERT INTO bill_instances
                 (row_order, definition_id, month_key, description,
-                 status, due_date, amount, frequency, date_paid, notes, funded, payment_mode)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                 status, due_date, amount, frequency, date_paid, notes, funded, payment_mode, vibe)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (
             max_order + 1,
             instance.get("definition_id"),
@@ -194,6 +210,7 @@ def insert_instance(instance, db_path=DEFAULT_DB):
             instance.get("notes", ""),
             instance.get("funded", 0),
             instance.get("payment_mode", ""),
+            instance.get("vibe", ""),
         ))
         return cur.lastrowid
 
@@ -204,7 +221,7 @@ def update_instance(instance_id, instance, db_path=DEFAULT_DB):
         con.execute("""
             UPDATE bill_instances
             SET description=?, status=?, due_date=?,
-                amount=?, frequency=?, date_paid=?, notes=?, funded=?, payment_mode=?
+                amount=?, frequency=?, date_paid=?, notes=?, funded=?, payment_mode=?, vibe=?
             WHERE id=?
         """, (
             instance.get("description", ""),
@@ -216,6 +233,7 @@ def update_instance(instance_id, instance, db_path=DEFAULT_DB):
             instance.get("notes", ""),
             instance.get("funded", 0),
             instance.get("payment_mode", ""),
+            instance.get("vibe", ""),
             instance_id,
         ))
 
@@ -290,13 +308,14 @@ def generate_month_instances(month_key, db_path=DEFAULT_DB):
             con.execute("""
                 INSERT INTO bill_instances
                     (row_order, definition_id, month_key, description,
-                     status, due_date, amount, frequency, date_paid, notes, payment_mode)
-                VALUES (?, ?, ?, ?, 'Due', ?, ?, ?, '', '', ?)
+                     status, due_date, amount, frequency, date_paid, notes, payment_mode, vibe)
+                VALUES (?, ?, ?, ?, 'Due', ?, ?, ?, '', '', ?, ?)
             """, (
                 row_order, d["id"], month_key,
                 d["description"],
                 due_date, d["typical_amount"], d["frequency"],
                 d.get("payment_mode", ""),
+                d.get("vibe", ""),
             ))
             row_order += 1
 

@@ -1,7 +1,6 @@
 import os
 import tempfile
 import pytest
-from datetime import date, timedelta
 import calc
 
 TOLERANCE = 0.02
@@ -23,45 +22,7 @@ def _inst(**kwargs):
     return base
 
 
-def _future(days=10):
-    return (date.today() + timedelta(days=days)).strftime("%m/%d/%Y")
-
-
-def _past(days=5):
-    return (date.today() - timedelta(days=days)).strftime("%m/%d/%Y")
-
-
 # ── annotate_instances ────────────────────────────────────────────────────────
-
-def test_annotate_future_not_overdue():
-    result = calc.annotate_instances([_inst(due_date=_future())])
-    assert result[0]["is_overdue"] is False
-
-
-def test_annotate_past_due_is_overdue():
-    result = calc.annotate_instances([_inst(due_date=_past(), status="Due")])
-    assert result[0]["is_overdue"] is True
-
-
-def test_annotate_paid_not_overdue():
-    result = calc.annotate_instances([_inst(due_date=_past(), status="Paid")])
-    assert result[0]["is_overdue"] is False
-
-
-def test_annotate_days_until_due_positive():
-    result = calc.annotate_instances([_inst(due_date=_future(7), status="Due")])
-    assert result[0]["days_until_due"] == 7
-
-
-def test_annotate_days_until_due_negative_overdue():
-    result = calc.annotate_instances([_inst(due_date=_past(3), status="Due")])
-    assert result[0]["days_until_due"] == -3
-
-
-def test_annotate_days_until_none_for_paid():
-    result = calc.annotate_instances([_inst(status="Paid")])
-    assert result[0]["days_until_due"] is None
-
 
 def test_annotate_preserves_fields():
     result = calc.annotate_instances([_inst(description="Mortgage", amount=602.13)])
@@ -96,15 +57,6 @@ def test_summary_total_paid():
 def test_summary_bill_count():
     instances = calc.annotate_instances([_inst() for _ in range(5)])
     assert calc.calculate_summary(instances)["bill_count"] == 5
-
-
-def test_summary_overdue_count():
-    instances = calc.annotate_instances([
-        _inst(due_date=_past(),   status="Due"),
-        _inst(due_date=_future(), status="Due"),
-        _inst(due_date=_past(),   status="Paid"),
-    ])
-    assert calc.calculate_summary(instances)["overdue_count"] == 1
 
 
 def test_summary_by_account():

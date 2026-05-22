@@ -127,8 +127,8 @@ def _merge_row(inst):
 
 
 def _inst_tag(inst):
-    if inst.get("is_overdue"):
-        return "overdue"
+    if inst.get("funded") and inst.get("status") != "Paid":
+        return "funded"
     return inst.get("status", "due").lower()
 
 
@@ -312,9 +312,9 @@ class CombinedDashboard(ctk.CTkFrame):
             self._tree.heading(col, text=col, command=lambda c=col: self._sort_by(c))
             self._tree.column(col, width=width, minwidth=50, anchor=anchor, stretch=False)
 
-        self._tree.tag_configure("due",     background="#2b2b1e", foreground="#fde68a")
-        self._tree.tag_configure("paid",    background="#1e3a2f", foreground="#7defa7")
-        self._tree.tag_configure("overdue", background="#3a1e1e", foreground="#f08080")
+        self._tree.tag_configure("due",    background="#2b2b1e", foreground="#fde68a")
+        self._tree.tag_configure("paid",   background="#1e3a2f", foreground="#7defa7")
+        self._tree.tag_configure("funded", background="#2e2a00", foreground="#ffd700")
 
         self._tree.bind("<<TreeviewSelect>>", self._on_select)
         self._tree.bind("<Double-1>", lambda _: self._edit())
@@ -342,18 +342,19 @@ class CombinedDashboard(ctk.CTkFrame):
             KPICard(row1, "Total Bills",
                     str(summary.get("bill_count", 0)), C["blue"]).grid(
                 row=0, column=0, sticky="nsew", padx=(0, 6), pady=4)
-            KPICard(row1, "Total Due",
-                    _fmt(summary.get("total_due", 0)), C["red"],
-                    sub="Unpaid balance").grid(
+            _paid  = summary.get("total_paid", 0)
+            _due   = summary.get("total_due",  0)
+            _total = _paid + _due
+            _pct   = (_paid / _total) if _total else 0
+            ProgressCard(row1, "Payment Progress", _pct,
+                         sub=f"{_pct*100:.0f}%  —  {_fmt(_paid)} of {_fmt(_total)}").grid(
                 row=0, column=1, sticky="nsew", padx=6, pady=4)
-            KPICard(row1, "Total Paid",
+            KPICard(row1, "Paid",
                     _fmt(summary.get("total_paid", 0)), C["green"]).grid(
                 row=0, column=2, sticky="nsew", padx=6, pady=4)
-            overdue_n = summary.get("overdue_count", 0)
-            KPICard(row1, "Overdue",
-                    f"{overdue_n} bill{'s' if overdue_n != 1 else ''}",
-                    C["orange"] if overdue_n > 0 else C["muted"],
-                    sub=_fmt(summary.get("overdue_amount", 0)) if overdue_n > 0 else "All on time").grid(
+            KPICard(row1, "Due",
+                    _fmt(summary.get("total_due", 0)), C["red"],
+                    sub="Unpaid balance").grid(
                 row=0, column=3, sticky="nsew", padx=(6, 0), pady=4)
 
             row2 = ctk.CTkFrame(self._metrics_panel, fg_color="transparent")
@@ -362,17 +363,12 @@ class CombinedDashboard(ctk.CTkFrame):
                 row2.grid_columnconfigure(col, weight=1, uniform="k2")
             row2.grid_rowconfigure(0, weight=1)
 
-            _paid  = summary.get("total_paid", 0)
-            _due   = summary.get("total_due",  0)
-            _total = _paid + _due
-            _pct   = (_paid / _total) if _total else 0
-            ProgressCard(row2, "Payment Progress", _pct,
-                         sub=f"{_pct*100:.0f}%  —  {_fmt(_paid)} of {_fmt(_total)}").grid(
+            KPICard(row2, "TBA", "TBA").grid(
                 row=0, column=0, sticky="nsew", padx=(0, 6), pady=4)
             _funded_total = sum(b.get("amount", 0) for b in annotated if b.get("funded"))
-            KPICard(row2, "$$$ Funded", _fmt(_funded_total), C["green"]).grid(
-                row=0, column=1, sticky="nsew", padx=6, pady=4)
             KPICard(row2, "TBD3", "TBD3").grid(
+                row=0, column=1, sticky="nsew", padx=6, pady=4)
+            KPICard(row2, "Funded", _fmt(_funded_total), C["green"]).grid(
                 row=0, column=2, sticky="nsew", padx=6, pady=4)
             KPICard(row2, "TBD4", "TBD4").grid(
                 row=0, column=3, sticky="nsew", padx=(6, 0), pady=4)
@@ -449,6 +445,9 @@ class CombinedDashboard(ctk.CTkFrame):
             return
         if inst.get("status") == "Paid":
             self._app.flash("Bill is already marked paid.")
+            return
+        if not inst.get("funded"):
+            self._app.flash("Bill must be funded before it can be marked paid.")
             return
         updated = dict(inst)
         updated["status"]    = "Paid"
@@ -1029,14 +1028,11 @@ class MoneyTrackerApp(ctk.CTk):
         if not annotated:
             self._status_var.set(f"{_month_label(self._current_month)} — No bills")
             return
-        overdue_n   = summary.get("overdue_count", 0)
-        overdue_str = f"{overdue_n} overdue" if overdue_n > 0 else "All on time ✅"
         self._status_var.set(
             f"{_month_label(self._current_month)}  |  "
             f"{summary['bill_count']} bills  |  "
             f"Due: {_fmt(summary['total_due'])}  |  "
-            f"Paid: {_fmt(summary['total_paid'])}  |  "
-            f"{overdue_str}"
+            f"Paid: {_fmt(summary['total_paid'])}"
         )
 
     def flash(self, msg, duration_ms=3000):

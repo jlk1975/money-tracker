@@ -51,7 +51,7 @@ def seed():
 
     existing = db.load_definitions(DB_PATH)
     if existing:
-        print(f"Database already has {len(existing)} definition(s). Aborting — run wipe.py first.")
+        print(f"Database already has {len(existing)} definition(s) — skipping sample data.")
         return
 
     for defn in SAMPLE_DEFINITIONS:

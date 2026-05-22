@@ -29,7 +29,7 @@ python3 wipe.py    # interactive: wipe instances only, or everything
 |------|---------|
 | `db.py` | All SQLite access — two tables, see schema below |
 | `calc.py` | Pure functions: `annotate_instances()`, `calculate_summary()` |
-| `app.py` | customtkinter GUI — 2 tabs: Dashboard, Definitions |
+| `app.py` | customtkinter GUI — 2 tabs: Bill Dashboard, Bill Definitions |
 | `seed.py` | One-time seeder using `tests/fixtures.py` sample data |
 | `wipe.py` | Interactive wipe utility |
 | `tests/fixtures.py` | 19 sample definitions + expected totals (SAMPLE_JUNE_TOTAL, SAMPLE_MAY_TOTAL) |
@@ -59,7 +59,12 @@ python3 wipe.py    # interactive: wipe instances only, or everything
 - **`annotate_instances()`** returns instances as a new list of dicts (no longer adds computed fields)
 - **`calculate_summary()`** returns `total_due`, `total_paid`, `bill_count`
 - **Funded workflow**: bills must be marked Funded before they can be marked Paid; toolbar has Mark Funded / Mark Not Funded / Mark Paid / Mark Unpaid buttons
-- **Bill Dashboard tab**: 2 rows of 4 KPI cards (Total Bills, Payment Progress, Paid, Due / Funded Not Paid, Funding Progress, Funded, Not Funded) + full bill grid with sortable columns; Bill Definitions tab unchanged
+- **Bill Dashboard tab**: 2 rows of 4 widgets + collapsible toggle; Bill Definitions tab unchanged
+  - Row 1: `VibeBarsCard` (horizontal bar chart by vibe emoji), Payment Progress, Paid, Due
+  - Row 2: Funded Not Paid, Funding Progress, Funded, Not Funded
+  - Right sidebar: Spending by Vibe + By Pay Mode breakdowns
+- **VibeBarsCard**: replaces old "Total Bills" KPI; tk.Canvas with `height=1` hint (prevents Tk 150px default); draws horizontal bars — emoji left, bar, count right; bars spread evenly to fill card height via `_paint` on `<Configure>`
+- **`_draw` conflict**: `ctk.CTkFrame` calls `self._draw()` internally — never name a canvas paint method `_draw` in a CTkFrame subclass; use `_paint` instead
 
 ## Expected totals (from fixtures)
 - May 2026: 16 bills, $3,486.59 (Monthly only — no AdHoc)

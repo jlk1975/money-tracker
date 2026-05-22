@@ -4,9 +4,8 @@ Two tabs: Dashboard (summary + nav + bill grid), Definitions (master bill templa
 """
 
 import tkinter as tk
-from tkinter import ttk, filedialog
+from tkinter import ttk
 import customtkinter as ctk
-import csv
 import os
 import calendar
 from datetime import date
@@ -264,17 +263,18 @@ class CombinedDashboard(ctk.CTkFrame):
         self._toolbar = ctk.CTkFrame(self, height=44, corner_radius=0, fg_color=C["card2"])
         self._toolbar.pack(fill="x")
         self._toolbar.pack_propagate(False)
-        for label, cmd in [
-            ("+ Add Bill",        self._add),
-            ("✎ Edit",            self._edit),
-            ("✗ Mark Not Funded", self._mark_not_funded),
-            ("✓ Mark Funded",     self._mark_funded),
-            ("✗ Mark Unpaid",     self._mark_unpaid),
-            ("✓ Mark Paid",       self._mark_paid),
-            ("🗑 Delete",          self._delete),
-            ("⬇ Export CSV",      self._export),
+        for label, cmd, width in [
+            ("+ Add Bill",              self._add,                    128),
+            ("✎ Edit",                  self._edit,                   128),
+            ("✗ Mark Not Funded",       self._mark_not_funded,        128),
+            ("✓ Mark Funded",           self._mark_funded,            128),
+            ("✗ Mark Unpaid",           self._mark_unpaid,            128),
+            ("✓ Mark Paid",             self._mark_paid,              128),
+            ("🗑 Delete",               self._delete,                 128),
+            ("Paid/Unpaid",    self._mark_all_paid_unpaid,   110),
+            ("Funded/Unfunded",self._mark_all_funded_unfunded,125),
         ]:
-            ctk.CTkButton(self._toolbar, text=label, width=128, height=30,
+            ctk.CTkButton(self._toolbar, text=label, width=width, height=30,
                           command=cmd).pack(side="right", padx=6, pady=7)
 
         self._tree_container = tk.Frame(self, bg="#1a1a2e")
@@ -524,24 +524,38 @@ class CombinedDashboard(ctk.CTkFrame):
                       lambda: (db.delete_instance(self._selected_id, DB_PATH),
                                self._app.refresh()))
 
-    def _export(self):
+    def _mark_all_funded_unfunded(self):
         annotated, _ = _load_and_annotate(self._app.current_month())
         if not annotated:
-            self._app.flash("No data to export.")
+            self._app.flash("No bills to update.")
             return
-        path = filedialog.asksaveasfilename(
-            defaultextension=".csv",
-            initialfile=f"bills_{self._app.current_month()}.csv",
-            filetypes=[("CSV files", "*.csv"), ("All files", "*.*")],
-        )
-        if not path:
+        all_funded = all(b.get("funded") for b in annotated)
+        new_val = 0 if all_funded else 1
+        for inst in annotated:
+            updated = dict(inst)
+            updated["funded"] = new_val
+            db.update_instance(inst["id"], updated, DB_PATH)
+        self._app.refresh()
+        self._app.flash(f"All bills marked {'unfunded' if all_funded else 'funded'}.")
+
+    def _mark_all_paid_unpaid(self):
+        annotated, _ = _load_and_annotate(self._app.current_month())
+        if not annotated:
+            self._app.flash("No bills to update.")
             return
-        with open(path, "w", newline="") as f:
-            w = csv.writer(f)
-            w.writerow([c[0] for c in GRID_COLUMNS])
-            for inst in annotated:
-                w.writerow(_merge_row(inst))
-        self._app.flash(f"Exported to {os.path.basename(path)}")
+        all_paid = all(b.get("status") == "Paid" for b in annotated)
+        if not all_paid and not all(b.get("funded") for b in annotated):
+            self._app.flash("All bills must be funded before marking all as paid.")
+            return
+        new_status = "Due" if all_paid else "Paid"
+        new_date   = date.today().strftime("%m/%d/%Y") if new_status == "Paid" else ""
+        for inst in annotated:
+            updated = dict(inst)
+            updated["status"]    = new_status
+            updated["date_paid"] = new_date
+            db.update_instance(inst["id"], updated, DB_PATH)
+        self._app.refresh()
+        self._app.flash(f"All bills marked {'unpaid' if all_paid else 'paid'}.")
 
 
 # ── Definitions Tab ───────────────────────────────────────────────────────────

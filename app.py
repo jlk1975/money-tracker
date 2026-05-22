@@ -42,7 +42,8 @@ C = {
 
 STATUSES      = ["Due", "Paid"]
 FREQUENCIES   = ["Monthly", "AdHoc", "Annual", "Semi-Annual", "Quarterly", "Bi-Weekly", "Weekly"]
-PAYMENT_MODES = ["Not Set", "Auto Pay", "Manual Pay"]
+PAYMENT_MODES = ["—", "🤖", "🔔"]
+_PM_LEGACY    = {"Auto Pay": "🤖", "Manual Pay": "🔔"}
 VIBES         = ["—", "🌟", "🤷", "💔"]
 _VIBE_LEGACY  = {"Good": "🌟", "Meh": "🤷", "Regret": "💔"}
 MONTH_NAMES   = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"]
@@ -89,7 +90,8 @@ def _fmt(val):
 
 
 def _payment_emoji(mode):
-    return {"Auto Pay": "🤖", "Manual Pay": "🔔"}.get(mode or "", "❓")
+    v = _PM_LEGACY.get(mode, mode)
+    return v if v in ("🤖", "🔔") else "❓"
 
 
 def _vibe_emoji(vibe):
@@ -687,7 +689,9 @@ class InstDialog(ctk.CTkToplevel):
 
         self._vars = {}
         _pm_raw = inst.get("payment_mode", "") if inst else ""
-        _pm_default = _pm_raw if _pm_raw in ("Auto Pay", "Manual Pay") else "Not Set"
+        _pm_default = _PM_LEGACY.get(_pm_raw, _pm_raw) if _pm_raw else "—"
+        if _pm_default not in ("🤖", "🔔"):
+            _pm_default = "—"
         _vibe_raw = inst.get("vibe", "") if inst else ""
         _vibe_default = _VIBE_LEGACY.get(_vibe_raw, _vibe_raw) if _vibe_raw else "—"
         if _vibe_default not in ("🌟", "🤷", "💔"):
@@ -752,11 +756,16 @@ class InstDialog(ctk.CTkToplevel):
 
         _pm   = self._vars["Payment Mode"].get()
         _vibe = self._vars["Vibe"].get()
+        try:
+            _m, _d, _y = due_date.split("/")
+            _month_key = f"{_y}-{_m.zfill(2)}"
+        except Exception:
+            _month_key = self._month_key
         data = {
-            "month_key":    self._month_key,
+            "month_key":    _month_key,
             "description":  desc,
             "status":       self._vars["Status"].get(),
-            "payment_mode": "" if _pm   == "Not Set" else _pm,
+            "payment_mode": "" if _pm   == "—" else _pm,
             "vibe":         "" if _vibe == "—" else _vibe,
             "due_date":     due_date,
             "amount":       amount,
@@ -838,7 +847,9 @@ class DefnDialog(ctk.CTkToplevel):
         pm_row.pack(fill="x", padx=16, pady=5)
         ctk.CTkLabel(pm_row, text="Payment Mode", width=110, anchor="w").pack(side="left")
         _pm_raw = defn.get("payment_mode", "") if defn else ""
-        _pm_default = _pm_raw if _pm_raw in ("Auto Pay", "Manual Pay") else "Not Set"
+        _pm_default = _PM_LEGACY.get(_pm_raw, _pm_raw) if _pm_raw else "—"
+        if _pm_default not in ("🤖", "🔔"):
+            _pm_default = "—"
         self._pm_var = tk.StringVar(value=_pm_default)
         ctk.CTkOptionMenu(pm_row, values=PAYMENT_MODES, variable=self._pm_var,
                           width=270).pack(side="left")
@@ -898,13 +909,16 @@ class DefnDialog(ctk.CTkToplevel):
             "Weekly":     ("",          True,  ""),
         }
         label, disabled, hint = cfg.get(freq, ("Due In", False, ""))
-        self._due_in_label.configure(text=label or "Due In")
         if disabled:
             self._due_in_var.set("")
-            self._due_in_entry.configure(state="disabled")
+            self._due_in_row.pack_forget()
+            self._due_in_hint.pack_forget()
         else:
+            self._due_in_row.pack(fill="x", padx=16, pady=5, before=self._due_in_hint)
+            self._due_in_hint.pack(padx=16, anchor="w", before=self._err)
+            self._due_in_label.configure(text=label or "Due In")
             self._due_in_entry.configure(state="normal")
-        self._due_in_hint.configure(text=hint)
+            self._due_in_hint.configure(text=hint)
 
     def _save(self):
         desc = self._vars["Description"].get().strip()
@@ -951,7 +965,7 @@ class DefnDialog(ctk.CTkToplevel):
             "adhoc_month":    adhoc_m,
             "active":         self._defn["active"] if self._defn else 1,
             "notes":          self._vars["Notes"].get().strip(),
-            "payment_mode":   "" if _pm   == "Not Set" else _pm,
+            "payment_mode":   "" if _pm   == "—" else _pm,
             "vibe":           "" if _vibe == "—" else _vibe,
         }
         if self._mode == "add":

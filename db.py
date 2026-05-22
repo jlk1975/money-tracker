@@ -220,12 +220,13 @@ def update_instance(instance_id, instance, db_path=DEFAULT_DB):
     with _conn(db_path) as con:
         con.execute("""
             UPDATE bill_instances
-            SET description=?, status=?, due_date=?,
+            SET description=?, status=?, month_key=?, due_date=?,
                 amount=?, frequency=?, date_paid=?, notes=?, funded=?, payment_mode=?, vibe=?
             WHERE id=?
         """, (
             instance.get("description", ""),
             instance.get("status", "Due"),
+            instance.get("month_key", ""),
             instance.get("due_date", ""),
             instance.get("amount", 0.0),
             instance.get("frequency", ""),

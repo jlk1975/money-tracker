@@ -684,14 +684,21 @@ class CombinedDashboard(ctk.CTkFrame):
                       lambda: (db.delete_instance(self._selected_id, DB_PATH),
                                self._app.refresh()))
 
-    def _mark_all_funded_unfunded(self):
+    def _visible_bills(self):
         annotated, _ = _load_and_annotate(self._app.current_month())
-        if not annotated:
+        if self._vibe_filter:
+            return [b for b in annotated
+                    if _vibe_emoji(b.get("vibe", "")) in self._vibe_filter]
+        return annotated
+
+    def _mark_all_funded_unfunded(self):
+        bills = self._visible_bills()
+        if not bills:
             self._app.flash("No bills to update.")
             return
-        all_funded = all(b.get("funded") for b in annotated)
+        all_funded = all(b.get("funded") for b in bills)
         new_val = 0 if all_funded else 1
-        for inst in annotated:
+        for inst in bills:
             updated = dict(inst)
             updated["funded"] = new_val
             db.update_instance(inst["id"], updated, DB_PATH)
@@ -699,17 +706,17 @@ class CombinedDashboard(ctk.CTkFrame):
         self._app.flash(f"All bills marked {'unfunded' if all_funded else 'funded'}.")
 
     def _mark_all_paid_unpaid(self):
-        annotated, _ = _load_and_annotate(self._app.current_month())
-        if not annotated:
+        bills = self._visible_bills()
+        if not bills:
             self._app.flash("No bills to update.")
             return
-        all_paid = all(b.get("status") == "Paid" for b in annotated)
-        if not all_paid and not all(b.get("funded") for b in annotated):
+        all_paid = all(b.get("status") == "Paid" for b in bills)
+        if not all_paid and not all(b.get("funded") for b in bills):
             self._app.flash("All bills must be funded before marking all as paid.")
             return
         new_status = "Due" if all_paid else "Paid"
         new_date   = date.today().strftime("%m/%d/%Y") if new_status == "Paid" else ""
-        for inst in annotated:
+        for inst in bills:
             updated = dict(inst)
             updated["status"]    = new_status
             updated["date_paid"] = new_date

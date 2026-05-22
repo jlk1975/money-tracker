@@ -264,18 +264,16 @@ class CombinedDashboard(ctk.CTkFrame):
         self._toolbar.pack(fill="x")
         self._toolbar.pack_propagate(False)
         for label, cmd, width in [
-            ("+ Add Bill",              self._add,                    128),
-            ("✎ Edit",                  self._edit,                   128),
-            ("✗ Mark Not Funded",       self._mark_not_funded,        128),
-            ("✓ Mark Funded",           self._mark_funded,            128),
-            ("✗ Mark Unpaid",           self._mark_unpaid,            128),
-            ("✓ Mark Paid",             self._mark_paid,              128),
-            ("🗑 Delete",               self._delete,                 128),
-            ("All Paid/Unpaid",    self._mark_all_paid_unpaid,   128),
-            ("All Funded/Unfunded",self._mark_all_funded_unfunded,145),
+            ("All Funded/Unfunded", self._mark_all_funded_unfunded, 145),
+            ("All Paid/Unpaid",     self._mark_all_paid_unpaid,     128),
+            ("Funded/Unfunded",     self._toggle_funded,            120),
+            ("Paid/Unpaid",         self._toggle_paid,              110),
+            ("+ Add Bill",          self._add,                      110),
+            ("✎ Edit",              self._edit,                      80),
+            ("🗑 Delete",            self._delete,                    90),
         ]:
             ctk.CTkButton(self._toolbar, text=label, width=width, height=30,
-                          command=cmd).pack(side="right", padx=6, pady=7)
+                          command=cmd).pack(side="left", padx=6, pady=7)
 
         self._tree_container = tk.Frame(self, bg="#1a1a2e")
         self._tree_container.pack(fill="both", expand=True)
@@ -442,78 +440,46 @@ class CombinedDashboard(ctk.CTkFrame):
         if inst:
             InstDialog(self, self._app, mode="edit", inst=inst)
 
-    def _mark_paid(self):
+    def _toggle_paid(self):
         if not self._selected_id:
-            self._app.flash("Select a bill to mark as paid.")
+            self._app.flash("Select a bill to toggle paid status.")
             return
         annotated, _ = _load_and_annotate(self._app.current_month())
         inst = next((b for b in annotated if b["id"] == self._selected_id), None)
         if not inst:
             return
         if inst.get("status") == "Paid":
-            self._app.flash("Bill is already marked paid.")
-            return
-        if not inst.get("funded"):
-            self._app.flash("Bill must be funded before it can be marked paid.")
-            return
-        updated = dict(inst)
-        updated["status"]    = "Paid"
-        updated["date_paid"] = date.today().strftime("%m/%d/%Y")
-        db.update_instance(self._selected_id, updated, DB_PATH)
-        self._app.refresh()
-        self._app.flash(f"Marked paid: {inst.get('description', '')[:40]}")
+            updated = dict(inst)
+            updated["status"]    = "Due"
+            updated["date_paid"] = ""
+            db.update_instance(self._selected_id, updated, DB_PATH)
+            self._app.refresh()
+            self._app.flash(f"Marked unpaid: {inst.get('description', '')[:40]}")
+        else:
+            if not inst.get("funded"):
+                self._app.flash("Bill must be funded before it can be marked paid.")
+                return
+            updated = dict(inst)
+            updated["status"]    = "Paid"
+            updated["date_paid"] = date.today().strftime("%m/%d/%Y")
+            db.update_instance(self._selected_id, updated, DB_PATH)
+            self._app.refresh()
+            self._app.flash(f"Marked paid: {inst.get('description', '')[:40]}")
 
-    def _mark_unpaid(self):
+    def _toggle_funded(self):
         if not self._selected_id:
-            self._app.flash("Select a bill to mark as unpaid.")
+            self._app.flash("Select a bill to toggle funded status.")
             return
         annotated, _ = _load_and_annotate(self._app.current_month())
         inst = next((b for b in annotated if b["id"] == self._selected_id), None)
         if not inst:
             return
-        if inst.get("status") == "Due":
-            self._app.flash("Bill is already unpaid.")
-            return
+        new_val = 0 if inst.get("funded") else 1
         updated = dict(inst)
-        updated["status"]    = "Due"
-        updated["date_paid"] = ""
+        updated["funded"] = new_val
         db.update_instance(self._selected_id, updated, DB_PATH)
         self._app.refresh()
-        self._app.flash(f"Marked unpaid: {inst.get('description', '')[:40]}")
-
-    def _mark_funded(self):
-        if not self._selected_id:
-            self._app.flash("Select a bill to mark as funded.")
-            return
-        annotated, _ = _load_and_annotate(self._app.current_month())
-        inst = next((b for b in annotated if b["id"] == self._selected_id), None)
-        if not inst:
-            return
-        if inst.get("funded"):
-            self._app.flash("Bill is already funded.")
-            return
-        updated = dict(inst)
-        updated["funded"] = 1
-        db.update_instance(self._selected_id, updated, DB_PATH)
-        self._app.refresh()
-        self._app.flash(f"Marked funded: {inst.get('description', '')[:40]}")
-
-    def _mark_not_funded(self):
-        if not self._selected_id:
-            self._app.flash("Select a bill to mark as not funded.")
-            return
-        annotated, _ = _load_and_annotate(self._app.current_month())
-        inst = next((b for b in annotated if b["id"] == self._selected_id), None)
-        if not inst:
-            return
-        if not inst.get("funded"):
-            self._app.flash("Bill is already not funded.")
-            return
-        updated = dict(inst)
-        updated["funded"] = 0
-        db.update_instance(self._selected_id, updated, DB_PATH)
-        self._app.refresh()
-        self._app.flash(f"Marked not funded: {inst.get('description', '')[:40]}")
+        self._app.flash(f"Marked {'funded' if new_val else 'not funded'}: {inst.get('description', '')[:40]}")
 
     def _delete(self):
         if not self._selected_id:

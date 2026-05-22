@@ -95,12 +95,11 @@ def insert_definition(defn, db_path=DEFAULT_DB):
         ).fetchone()[0]
         cur = con.execute("""
             INSERT INTO bill_definitions
-                (sort_order, account, description, frequency, typical_amount,
+                (sort_order, description, frequency, typical_amount,
                  due_day, months_active, adhoc_month, active, notes)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?)
         """, (
             max_order + 1,
-            defn.get("account", ""),
             defn.get("description", ""),
             defn.get("frequency", "Monthly"),
             defn.get("typical_amount", 0.0),
@@ -117,11 +116,10 @@ def update_definition(defn_id, defn, db_path=DEFAULT_DB):
     with _conn(db_path) as con:
         con.execute("""
             UPDATE bill_definitions
-            SET account=?, description=?, frequency=?, typical_amount=?,
+            SET description=?, frequency=?, typical_amount=?,
                 due_day=?, months_active=?, adhoc_month=?, active=?, notes=?
             WHERE id=?
         """, (
-            defn.get("account", ""),
             defn.get("description", ""),
             defn.get("frequency", "Monthly"),
             defn.get("typical_amount", 0.0),
@@ -161,14 +159,13 @@ def insert_instance(instance, db_path=DEFAULT_DB):
         ).fetchone()[0]
         cur = con.execute("""
             INSERT INTO bill_instances
-                (row_order, definition_id, month_key, account, description,
+                (row_order, definition_id, month_key, description,
                  status, due_date, amount, frequency, date_paid, notes, funded)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (
             max_order + 1,
             instance.get("definition_id"),
             instance.get("month_key", ""),
-            instance.get("account", ""),
             instance.get("description", ""),
             instance.get("status", "Due"),
             instance.get("due_date", ""),
@@ -186,11 +183,10 @@ def update_instance(instance_id, instance, db_path=DEFAULT_DB):
     with _conn(db_path) as con:
         con.execute("""
             UPDATE bill_instances
-            SET account=?, description=?, status=?, due_date=?,
+            SET description=?, status=?, due_date=?,
                 amount=?, frequency=?, date_paid=?, notes=?, funded=?
             WHERE id=?
         """, (
-            instance.get("account", ""),
             instance.get("description", ""),
             instance.get("status", "Due"),
             instance.get("due_date", ""),
@@ -272,12 +268,12 @@ def generate_month_instances(month_key, db_path=DEFAULT_DB):
             due_date = f"{month:02d}/{due_day:02d}/{year}"
             con.execute("""
                 INSERT INTO bill_instances
-                    (row_order, definition_id, month_key, account, description,
+                    (row_order, definition_id, month_key, description,
                      status, due_date, amount, frequency, date_paid, notes)
-                VALUES (?, ?, ?, ?, ?, 'Due', ?, ?, ?, '', '')
+                VALUES (?, ?, ?, ?, 'Due', ?, ?, ?, '', '')
             """, (
                 row_order, d["id"], month_key,
-                d["account"], d["description"],
+                d["description"],
                 due_date, d["typical_amount"], d["frequency"],
             ))
             row_order += 1

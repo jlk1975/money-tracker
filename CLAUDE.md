@@ -1,6 +1,6 @@
 # Money Tracker — Claude Code Context
 
-Personal household bill tracker for Jason & Heather. Tracks 19 bills across 3 accounts.
+Personal household bill tracker. Tracks recurring and one-off bills.
 
 ## Running the app
 ```bash
@@ -16,7 +16,7 @@ python3 -m pytest tests/ -v
 
 ## Seeding / wiping data
 ```bash
-python3 seed.py    # populate definitions + generate June 2026 instances (run once on fresh db)
+python3 seed.py    # populate with sample data + generate current month instances (run once on fresh db)
 python3 wipe.py    # interactive: wipe instances only, or everything
 ```
 
@@ -26,7 +26,7 @@ python3 wipe.py    # interactive: wipe instances only, or everything
 |------|---------|
 | `db.py` | All SQLite access — two tables, see schema below |
 | `calc.py` | Pure functions: `annotate_instances()`, `calculate_summary()` |
-| `app.py` | customtkinter GUI — 3 tabs: Dashboard, Bills, Definitions |
+| `app.py` | customtkinter GUI — 2 tabs: Dashboard, Definitions |
 | `seed.py` | One-time seeder using `tests/fixtures.py` sample data |
 | `wipe.py` | Interactive wipe utility |
 | `tests/fixtures.py` | 19 sample definitions + expected totals (SAMPLE_JUNE_TOTAL, SAMPLE_MAY_TOTAL) |
@@ -34,15 +34,18 @@ python3 wipe.py    # interactive: wipe instances only, or everything
 ## Database schema
 
 **`bill_definitions`** — source of truth for recurring bills
-- `id`, `account`, `description`, `frequency`, `typical_amount`, `due_day`
+- `id`, `description`, `frequency`, `typical_amount`, `due_day`
 - `months_active` — comma-separated month numbers for Annual/Semi-Annual/Quarterly (e.g. `"3,9"`)
 - `adhoc_month` — YYYY-MM target for AdHoc bills (e.g. `"2026-06"`)
 - `notes`, `active` (0/1), `sort_order`
+- `account` column exists in DB for backward compat but is unused by the app
 
 **`bill_instances`** — one row per bill per month
-- `id`, `definition_id`, `month_key` (YYYY-MM), `account`, `description`
+- `id`, `definition_id`, `month_key` (YYYY-MM), `description`
 - `status` (Due/Paid), `due_date` (MM/DD/YYYY), `amount`, `frequency`
 - `date_paid`, `notes`, `row_order`
+- `funded` (0/1) — whether the bill has been funded for the month (default 0)
+- `account` column exists in DB for backward compat but is unused by the app
 
 ## Key concepts
 
@@ -51,13 +54,10 @@ python3 wipe.py    # interactive: wipe instances only, or everything
 - **Frequency routing**: Monthly=every month; AdHoc=only in `adhoc_month`; Annual/Semi-Annual/Quarterly/Bi-Weekly/Weekly use `months_active`
 - **`due_day` clamping**: clamped to actual month-end (e.g. day 31 → Feb 28)
 - **Navigation**: left arrow = only to months with existing instances; right arrow = auto-generates up to 12 months ahead of today
-- **`annotate_instances()`** adds `is_overdue` and `days_until_due` to each instance dict
-- **`calculate_summary()`** returns `total_due`, `total_paid`, `bill_count`, `overdue_count`, `overdue_amount`, `by_account`
-
-## Accounts
-- **UWBC** — primary checking (most bills)
-- **BOAC1** — Bank of America
-- **Sam's Card** — credit card
+- **`annotate_instances()`** returns instances as a new list of dicts (no longer adds computed fields)
+- **`calculate_summary()`** returns `total_due`, `total_paid`, `bill_count`
+- **Funded workflow**: bills must be marked Funded before they can be marked Paid; toolbar has Mark Funded / Mark Not Funded / Mark Paid / Mark Unpaid buttons
+- **Dashboard tab**: 2 rows of 4 KPI cards (Total Bills, Payment Progress, Paid, Due / Funded Not Paid (YNAB), Funding Progress, Funded, Not Funded) + full bill grid with sortable columns; Definitions tab unchanged
 
 ## Expected totals (from fixtures)
 - May 2026: 16 bills, $3,486.59 (Monthly only — no AdHoc)

@@ -15,7 +15,6 @@ def tmp_db():
 
 def _defn(**kwargs):
     base = {
-        "account":        "UWBC",
         "description":    "Test Bill",
         "frequency":      "Monthly",
         "typical_amount": 100.0,
@@ -32,7 +31,6 @@ def _inst(month_key="2026-06", **kwargs):
     base = {
         "definition_id": None,
         "month_key":     month_key,
-        "account":       "UWBC",
         "description":   "Test Bill",
         "status":        "Due",
         "due_date":      "06/15/2026",
@@ -68,13 +66,12 @@ def test_insert_definition_returns_id(tmp_db):
 
 def test_insert_definition_stores_fields(tmp_db):
     db.insert_definition(_defn(
-        account="BOAC1", description="Electric", frequency="Annual",
+        description="Electric", frequency="Annual",
         typical_amount=85.50, due_day=5, months_active="3", adhoc_month="",
         notes="Annual spring bill"
     ), tmp_db)
     rows = db.load_definitions(tmp_db)
     r = rows[0]
-    assert r["account"]        == "BOAC1"
     assert r["description"]    == "Electric"
     assert r["frequency"]      == "Annual"
     assert r["typical_amount"] == 85.50
@@ -132,13 +129,12 @@ def test_insert_instance_returns_id(tmp_db):
 
 def test_insert_instance_stores_fields(tmp_db):
     db.insert_instance(_inst(
-        account="BOAC1", description="Health", status="Paid",
+        description="Health", status="Paid",
         due_date="06/01/2026", amount=85.50, frequency="Monthly",
         date_paid="05/28/2026", notes="Auto pay"
     ), tmp_db)
     rows = db.load_instances("2026-06", tmp_db)
     r = rows[0]
-    assert r["account"]     == "BOAC1"
     assert r["description"] == "Health"
     assert r["status"]      == "Paid"
     assert r["due_date"]    == "06/01/2026"

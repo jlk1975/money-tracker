@@ -22,19 +22,8 @@ def calculate_summary(annotated_instances):
     total_due  = sum(b["amount"] for b in annotated_instances if b.get("status") == "Due")
     total_paid = sum(b["amount"] for b in annotated_instances if b.get("status") == "Paid")
 
-    by_account = {}
-    for b in annotated_instances:
-        acct = b.get("account") or "Unknown"
-        if acct not in by_account:
-            by_account[acct] = {"due": 0.0, "paid": 0.0}
-        if b.get("status") == "Due":
-            by_account[acct]["due"]  += b.get("amount", 0.0)
-        else:
-            by_account[acct]["paid"] += b.get("amount", 0.0)
-
     return {
         "total_due":  total_due,
         "total_paid": total_paid,
         "bill_count": len(annotated_instances),
-        "by_account": by_account,
     }

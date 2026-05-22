@@ -38,22 +38,14 @@ C = {
     "heading": "#8ab4f8",
 }
 
-ACCOUNTS    = ["UWBC", "BOAC1", "Sam's Card", "Other"]
 STATUSES    = ["Due", "Paid"]
 FREQUENCIES = ["Monthly", "AdHoc", "Annual", "Semi-Annual", "Quarterly", "Bi-Weekly", "Weekly"]
 MONTH_NAMES = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"]
-
-ACCOUNT_COLORS = {
-    "UWBC":       C["blue"],
-    "BOAC1":      C["teal"],
-    "Sam's Card": C["purple"],
-}
 
 # ── Bills tab grid ────────────────────────────────────────────────────────────
 GRID_COLUMNS = [
     ("✓",          40),
     ("Status",     70),
-    ("Account",   100),
     ("Expense",   240),
     ("Due Date",   90),
     ("Amount",     90),
@@ -61,12 +53,11 @@ GRID_COLUMNS = [
     ("Date Paid",  90),
     ("Funded",     70),
 ]
-LEFT_ALIGN = {"Status", "Account", "Expense", "Due Date", "Frequency", "Date Paid"}
+LEFT_ALIGN = {"Status", "Expense", "Due Date", "Frequency", "Date Paid"}
 
 # ── Definitions tab grid ──────────────────────────────────────────────────────
 DEF_COLUMNS = [
     ("Active",      55),
-    ("Account",    100),
     ("Description",230),
     ("Frequency",  100),
     ("Typical $",   90),
@@ -74,7 +65,7 @@ DEF_COLUMNS = [
     ("Due In",     150),
     ("Notes",      150),
 ]
-DEF_LEFT_ALIGN = {"Account", "Description", "Frequency", "Due In", "Notes"}
+DEF_LEFT_ALIGN = {"Description", "Frequency", "Due In", "Notes"}
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -117,7 +108,6 @@ def _merge_row(inst):
     return (
         "✓" if inst.get("status") == "Paid" else "",
         inst.get("status", ""),
-        inst.get("account", ""),
         inst.get("description", ""),
         inst.get("due_date", ""),
         _fmt(inst.get("amount")),
@@ -159,7 +149,6 @@ def _format_due_in(defn):
 def _merge_defn_row(defn):
     return (
         "✓" if defn.get("active") else "✗",
-        defn.get("account", ""),
         defn.get("description", ""),
         defn.get("frequency", ""),
         _fmt(defn.get("typical_amount")),
@@ -667,7 +656,6 @@ class InstDialog(ctk.CTkToplevel):
 
         self._vars = {}
         fields = [
-            ("Account",   "combo", inst["account"]     if inst else ACCOUNTS[0]),
             ("Expense",   "entry", inst["description"] if inst else ""),
             ("Status",    "combo", inst["status"]      if inst else STATUSES[0]),
             ("Due Date",  "entry", inst["due_date"]    if inst else ""),
@@ -684,9 +672,7 @@ class InstDialog(ctk.CTkToplevel):
             if kind == "entry":
                 ctk.CTkEntry(row, textvariable=var, width=260).pack(side="left")
             else:
-                choices = (ACCOUNTS if label == "Account"
-                           else STATUSES if label == "Status"
-                           else FREQUENCIES)
+                choices = STATUSES if label == "Status" else FREQUENCIES
                 ctk.CTkOptionMenu(row, values=choices, variable=var,
                                   width=260).pack(side="left")
             self._vars[label] = var
@@ -720,7 +706,6 @@ class InstDialog(ctk.CTkToplevel):
 
         data = {
             "month_key":   self._month_key,
-            "account":     self._vars["Account"].get(),
             "description": desc,
             "status":      self._vars["Status"].get(),
             "due_date":    due_date,
@@ -760,21 +745,16 @@ class DefnDialog(ctk.CTkToplevel):
         self._vars = {}
 
         # Static fields
-        for label, kind, default in [
-            ("Account",    "combo", defn["account"]         if defn else ACCOUNTS[0]),
-            ("Description","entry", defn["description"]     if defn else ""),
-            ("Typical $",  "entry", str(defn["typical_amount"]) if defn else ""),
-            ("Due Day",    "entry", str(defn["due_day"])    if defn else "1"),
+        for label, default in [
+            ("Description", defn["description"]          if defn else ""),
+            ("Typical $",   str(defn["typical_amount"])  if defn else ""),
+            ("Due Day",     str(defn["due_day"])         if defn else "1"),
         ]:
             row = ctk.CTkFrame(self, fg_color="transparent")
             row.pack(fill="x", padx=16, pady=5)
             ctk.CTkLabel(row, text=label, width=110, anchor="w").pack(side="left")
             var = tk.StringVar(value=str(default))
-            if kind == "entry":
-                ctk.CTkEntry(row, textvariable=var, width=270).pack(side="left")
-            else:
-                ctk.CTkOptionMenu(row, values=ACCOUNTS, variable=var,
-                                  width=270).pack(side="left")
+            ctk.CTkEntry(row, textvariable=var, width=270).pack(side="left")
             self._vars[label] = var
 
         # Frequency (triggers Due In update)
@@ -887,7 +867,6 @@ class DefnDialog(ctk.CTkToplevel):
             months_a = due_in
 
         data = {
-            "account":        self._vars["Account"].get(),
             "description":    desc,
             "frequency":      freq,
             "typical_amount": amount,

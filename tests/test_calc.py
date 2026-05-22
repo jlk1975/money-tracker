@@ -9,7 +9,6 @@ TOLERANCE = 0.02
 def _inst(**kwargs):
     base = {
         "id":          1,
-        "account":     "UWBC",
         "description": "Test Bill",
         "status":      "Due",
         "due_date":    "06/15/2026",
@@ -58,17 +57,6 @@ def test_summary_bill_count():
     instances = calc.annotate_instances([_inst() for _ in range(5)])
     assert calc.calculate_summary(instances)["bill_count"] == 5
 
-
-def test_summary_by_account():
-    instances = calc.annotate_instances([
-        _inst(account="UWBC",  amount=100.0, status="Due"),
-        _inst(account="UWBC",  amount=50.0,  status="Paid"),
-        _inst(account="BOAC1", amount=75.0,  status="Due"),
-    ])
-    s = calc.calculate_summary(instances)
-    assert s["by_account"]["UWBC"]["due"]   == 100.0
-    assert s["by_account"]["UWBC"]["paid"]  == 50.0
-    assert s["by_account"]["BOAC1"]["due"]  == 75.0
 
 
 def test_summary_empty():

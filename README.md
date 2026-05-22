@@ -1,6 +1,6 @@
 # Money Tracker
 
-A personal household bill tracker built with Python and customtkinter. Track recurring and one-off bills across multiple accounts, manage funding and payment status, and get a monthly dashboard overview.
+A personal household bill tracker built with Python and customtkinter. Track recurring and one-off bills, manage funding and payment status, and get a monthly dashboard overview.
 
 ## Requirements
 

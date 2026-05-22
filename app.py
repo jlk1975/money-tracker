@@ -363,14 +363,21 @@ class CombinedDashboard(ctk.CTkFrame):
                 row2.grid_columnconfigure(col, weight=1, uniform="k2")
             row2.grid_rowconfigure(0, weight=1)
 
-            KPICard(row2, "TBA", "TBA").grid(
+            _funded_not_paid = sum(b.get("amount", 0) for b in annotated
+                                   if b.get("funded") and b.get("status") != "Paid")
+            KPICard(row2, "Funded Not Paid (YNAB)", _fmt(_funded_not_paid), C["yellow"]).grid(
                 row=0, column=0, sticky="nsew", padx=(0, 6), pady=4)
             _funded_total = sum(b.get("amount", 0) for b in annotated if b.get("funded"))
-            KPICard(row2, "TBD3", "TBD3").grid(
+            _funded_total2  = sum(b.get("amount", 0) for b in annotated if b.get("funded"))
+            _total2         = sum(b.get("amount", 0) for b in annotated)
+            _fpct           = (_funded_total2 / _total2) if _total2 else 0
+            ProgressCard(row2, "Funding Progress", _fpct,
+                         sub=f"{_fpct*100:.0f}%  —  {_fmt(_funded_total2)} of {_fmt(_total2)}").grid(
                 row=0, column=1, sticky="nsew", padx=6, pady=4)
             KPICard(row2, "Funded", _fmt(_funded_total), C["green"]).grid(
                 row=0, column=2, sticky="nsew", padx=6, pady=4)
-            KPICard(row2, "TBD4", "TBD4").grid(
+            _not_funded_total = sum(b.get("amount", 0) for b in annotated if not b.get("funded"))
+            KPICard(row2, "Not Funded", _fmt(_not_funded_total), C["red"]).grid(
                 row=0, column=3, sticky="nsew", padx=(6, 0), pady=4)
 
 

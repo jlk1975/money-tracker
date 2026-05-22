@@ -1180,7 +1180,7 @@ class ConfirmDialog(ctk.CTkToplevel):
 class MoneyTrackerApp(ctk.CTk):
     def __init__(self):
         super().__init__()
-        self.title("Money Tracker")
+        self.title("Bill Tracker")
         self.minsize(960, 620)
 
         db.init_db(DB_PATH)
@@ -1237,9 +1237,29 @@ class MoneyTrackerApp(ctk.CTk):
         header = ctk.CTkFrame(self, height=52, corner_radius=0, fg_color="#1a1a2e")
         header.pack(fill="x", side="top")
         header.pack_propagate(False)
-        ctk.CTkLabel(header, text="Money Tracker",
-                     font=ctk.CTkFont(size=20, weight="bold"),
-                     text_color=C["heading"]).pack(side="left", padx=18, pady=10)
+        header.columnconfigure(0, weight=1)
+        header.columnconfigure(1, weight=0)
+        header.columnconfigure(2, weight=1)
+
+        ctk.CTkLabel(header, text="💰",
+                     font=ctk.CTkFont(size=36)).grid(row=0, column=0, sticky="w", padx=18, pady=8)
+
+        self._tab_btns = {}
+        tab_group = ctk.CTkFrame(header, fg_color="transparent")
+        tab_group.grid(row=0, column=1, pady=10)
+        ctk.CTkLabel(header, text="💰",
+                     font=ctk.CTkFont(size=36)).grid(row=0, column=2, sticky="e", padx=18, pady=8)
+        for name in ("Dashboard", "Definitions"):
+            btn = ctk.CTkButton(
+                tab_group, text=name, width=130, height=30,
+                corner_radius=6,
+                fg_color="#3a5a8a", hover_color="#4a6a9a",
+                text_color=C["heading"],
+                font=ctk.CTkFont(size=13),
+                command=lambda n=name: self._switch_tab(n),
+            )
+            btn.pack(side="left", padx=4)
+            self._tab_btns[name] = btn
 
         self._status_var = tk.StringVar(value="Loading…")
         status_bar = ctk.CTkFrame(self, height=26, corner_radius=0,
@@ -1250,21 +1270,35 @@ class MoneyTrackerApp(ctk.CTk):
                      font=ctk.CTkFont(size=11), anchor="w",
                      text_color=C["muted"]).pack(side="left", padx=12)
 
-        tabs = ctk.CTkTabview(self, corner_radius=6, fg_color=C["bg"],
-                              segmented_button_fg_color=C["card2"],
-                              segmented_button_selected_color="#3a5a8a",
-                              segmented_button_selected_hover_color="#4a6a9a",
-                              segmented_button_unselected_color=C["card2"],
-                              segmented_button_unselected_hover_color=C["border"])
-        tabs.pack(fill="both", expand=True)
-        tabs.add("Bill Dashboard")
-        tabs.add("Bill Definitions")
+        content = ctk.CTkFrame(self, fg_color=C["bg"], corner_radius=0)
+        content.pack(fill="both", expand=True)
 
-        self._dashboard = CombinedDashboard(tabs.tab("Bill Dashboard"), self)
+        self._dashboard = CombinedDashboard(content, self)
         self._dashboard.pack(fill="both", expand=True)
 
-        self._defs = DefinitionsTab(tabs.tab("Bill Definitions"), self)
-        self._defs.pack(fill="both", expand=True)
+        self._defs = DefinitionsTab(content, self)
+
+        self._active_tab = "Dashboard"
+        self._update_tab_btn_styles()
+
+    def _switch_tab(self, name):
+        if name == self._active_tab:
+            return
+        self._active_tab = name
+        if name == "Dashboard":
+            self._defs.pack_forget()
+            self._dashboard.pack(fill="both", expand=True)
+        else:
+            self._dashboard.pack_forget()
+            self._defs.pack(fill="both", expand=True)
+        self._update_tab_btn_styles()
+
+    def _update_tab_btn_styles(self):
+        for name, btn in self._tab_btns.items():
+            if name == self._active_tab:
+                btn.configure(fg_color="#3a5a8a", text_color=C["heading"])
+            else:
+                btn.configure(fg_color=C["card2"], text_color=C["muted"])
 
     def refresh(self):
         annotated, summary = _load_and_annotate(self._current_month)

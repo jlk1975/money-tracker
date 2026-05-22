@@ -191,14 +191,17 @@ class ProgressCard(ctk.CTkFrame):
         self.grid_columnconfigure(0, weight=1)
         ctk.CTkLabel(self, text=label, font=ctk.CTkFont(size=12),
                      text_color=C["muted"], anchor="w").grid(
-            row=0, column=0, sticky="ew", padx=14, pady=(12, 4))
+            row=0, column=0, sticky="ew", padx=14, pady=(8, 3))
         bar = ctk.CTkProgressBar(self, progress_color=C["green"],
                                   fg_color=C["border"])
         bar.set(max(0.0, min(1.0, progress)))
-        bar.grid(row=1, column=0, sticky="ew", padx=14, pady=(0, 4))
-        ctk.CTkLabel(self, text=sub or "", font=ctk.CTkFont(size=11),
-                     text_color=C["muted"], anchor="w").grid(
-            row=2, column=0, sticky="ew", padx=14, pady=(0, 10))
+        bar.grid(row=1, column=0, sticky="ew", padx=14, pady=(0, 3))
+        if sub:
+            ctk.CTkLabel(self, text=sub, font=ctk.CTkFont(size=11),
+                         text_color=C["muted"], anchor="w").grid(
+                row=2, column=0, sticky="ew", padx=14, pady=(0, 8))
+        else:
+            ctk.CTkFrame(self, height=4, fg_color="transparent").grid(row=2, column=0)
 
 
 class KPICard(ctk.CTkFrame):
@@ -208,14 +211,17 @@ class KPICard(ctk.CTkFrame):
         self.grid_columnconfigure(0, weight=1)
         ctk.CTkLabel(self, text=label, font=ctk.CTkFont(size=12),
                      text_color=C["muted"], anchor="w").grid(
-            row=0, column=0, sticky="ew", padx=14, pady=(12, 2))
+            row=0, column=0, sticky="ew", padx=14, pady=(8, 2))
         ctk.CTkLabel(self, text=value_str,
                      font=ctk.CTkFont(size=22, weight="bold"),
                      text_color=value_color or C["text"], anchor="w").grid(
             row=1, column=0, sticky="ew", padx=14, pady=(0, 2))
-        ctk.CTkLabel(self, text=sub or "", font=ctk.CTkFont(size=11),
-                     text_color=C["muted"], anchor="w").grid(
-            row=2, column=0, sticky="ew", padx=14, pady=(0, 10))
+        if sub:
+            ctk.CTkLabel(self, text=sub, font=ctk.CTkFont(size=11),
+                         text_color=C["muted"], anchor="w").grid(
+                row=2, column=0, sticky="ew", padx=14, pady=(0, 8))
+        else:
+            ctk.CTkFrame(self, height=4, fg_color="transparent").grid(row=2, column=0)
 
 
 
@@ -227,7 +233,7 @@ class VibeBarsCard(ctk.CTkFrame):
                          border_width=1, border_color=C["border"], **kw)
         self._counts = {k: v for k, v in vibe_counts.items() if v > 0}
         self._max    = max(self._counts.values()) if self._counts else 1
-        self._canvas = tk.Canvas(self, bg=C["card"], highlightthickness=0)
+        self._canvas = tk.Canvas(self, bg=C["card"], highlightthickness=0, height=1)
         self._canvas.pack(fill="both", expand=True, padx=8, pady=8)
         self._canvas.bind("<Configure>", self._paint)
 
@@ -238,26 +244,25 @@ class VibeBarsCard(ctk.CTkFrame):
             return
         vibes      = [e for e in ("🌟", "🤷", "💔", "") if e in self._counts]
         n          = len(vibes)
-        pad_x      = 12
-        pad_top    = 14
-        pad_bot    = 28
-        bar_area_h = h - pad_top - pad_bot
-        slot_w     = (w - 2 * pad_x) / n
-        bar_w      = max(10, int(slot_w * 0.55))
+        pad_left   = 28
+        pad_right  = 30
+        pad_y      = 8
+        bar_h      = 16  # fixed to match emoji glyph height
+        bar_area_w = w - pad_left - pad_right
+        slot_h     = (h - 2 * pad_y) / n  # spread evenly across available height
         for i, emoji in enumerate(vibes):
             count  = self._counts[emoji]
-            bar_h  = max(4, int(bar_area_h * count / self._max))
-            cx     = int(pad_x + slot_w * i + slot_w / 2)
-            x0, x1 = cx - bar_w // 2, cx + bar_w // 2
-            y1     = h - pad_bot
-            y0     = y1 - bar_h
+            bar_w  = max(4, int(bar_area_w * count / self._max))
+            cy     = int(pad_y + slot_h * i + slot_h / 2)
+            y0, y1 = cy - bar_h // 2, cy + bar_h // 2
+            x0, x1 = pad_left, pad_left + bar_w
             self._canvas.create_rectangle(x0, y0, x1, y1,
                                           fill=self._COLORS.get(emoji, C["muted"]),
                                           outline="")
-            self._canvas.create_text(cx, y0 - 4, text=str(count), anchor="s",
-                                     fill=C["text"], font=("Helvetica", 10, "bold"))
-            self._canvas.create_text(cx, h - pad_bot + 4, text=emoji or "?",
-                                     anchor="n", fill=C["text"], font=("Helvetica", 14))
+            self._canvas.create_text(pad_left - 4, cy, text=emoji or "?",
+                                     anchor="e", fill=C["text"], font=("Helvetica", 13))
+            self._canvas.create_text(x1 + 5, cy, text=str(count),
+                                     anchor="w", fill=C["text"], font=("Helvetica", 10, "bold"))
 
 
 class _HBar(tk.Canvas):
@@ -480,7 +485,7 @@ class CombinedDashboard(ctk.CTkFrame):
             w.destroy()
 
         if annotated:
-            pad = {"padx": 18, "pady": 8}
+            pad = {"padx": 18, "pady": 4}
 
             row1 = ctk.CTkFrame(self._metrics_panel, fg_color="transparent")
             row1.pack(fill="x", **pad)

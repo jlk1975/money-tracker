@@ -271,8 +271,8 @@ class CombinedDashboard(ctk.CTkFrame):
             ("✗ Mark Unpaid",           self._mark_unpaid,            128),
             ("✓ Mark Paid",             self._mark_paid,              128),
             ("🗑 Delete",               self._delete,                 128),
-            ("Paid/Unpaid",    self._mark_all_paid_unpaid,   110),
-            ("Funded/Unfunded",self._mark_all_funded_unfunded,125),
+            ("All Paid/Unpaid",    self._mark_all_paid_unpaid,   128),
+            ("All Funded/Unfunded",self._mark_all_funded_unfunded,145),
         ]:
             ctk.CTkButton(self._toolbar, text=label, width=width, height=30,
                           command=cmd).pack(side="right", padx=6, pady=7)
@@ -312,7 +312,7 @@ class CombinedDashboard(ctk.CTkFrame):
             self._tree.heading(col, text=col, command=lambda c=col: self._sort_by(c))
             self._tree.column(col, width=width, minwidth=50, anchor=anchor, stretch=False)
 
-        self._tree.tag_configure("due",    background="#2b2b1e", foreground="#fde68a")
+        self._tree.tag_configure("due",    background="#3a1e1e", foreground="#f08080")
         self._tree.tag_configure("paid",   background="#1e3a2f", foreground="#7defa7")
         self._tree.tag_configure("funded", background="#2e2a00", foreground="#ffd700")
 

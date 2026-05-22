@@ -40,6 +40,7 @@ python3 wipe.py    # interactive: wipe instances only, or everything
 - `id`, `description`, `frequency`, `typical_amount`, `due_day`
 - `months_active` — comma-separated month numbers for Annual/Semi-Annual/Quarterly (e.g. `"3,9"`)
 - `adhoc_month` — YYYY-MM target for AdHoc bills (e.g. `"2026-06"`)
+- `payment_mode` — `"Auto Pay"`, `"Manual Pay"`, or `""` (unset); display-only, no automation
 - `notes`, `active` (0/1), `sort_order`
 
 **`bill_instances`** — one row per bill per month

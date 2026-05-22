@@ -40,14 +40,16 @@ C = {
     "heading": "#8ab4f8",
 }
 
-STATUSES    = ["Due", "Paid"]
-FREQUENCIES = ["Monthly", "AdHoc", "Annual", "Semi-Annual", "Quarterly", "Bi-Weekly", "Weekly"]
-MONTH_NAMES = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"]
+STATUSES      = ["Due", "Paid"]
+FREQUENCIES   = ["Monthly", "AdHoc", "Annual", "Semi-Annual", "Quarterly", "Bi-Weekly", "Weekly"]
+PAYMENT_MODES = ["Not Set", "Auto Pay", "Manual Pay"]
+MONTH_NAMES   = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"]
 
 # ── Bills tab grid ────────────────────────────────────────────────────────────
 GRID_COLUMNS = [
     ("✓",          40),
     ("Status",     70),
+    ("Pay Mode",   65),
     ("Expense",   240),
     ("Due Date",   90),
     ("Amount",     90),
@@ -62,6 +64,7 @@ DEF_COLUMNS = [
     ("Active",      55),
     ("Description",230),
     ("Frequency",  100),
+    ("Pay Mode",    80),
     ("Typical $",   90),
     ("Due Day",     65),
     ("Due In",     150),
@@ -79,6 +82,10 @@ def _fmt(val):
         return "$0.00"
     sign = "-" if val < 0 else ""
     return f"{sign}${abs(val):,.2f}"
+
+
+def _payment_emoji(mode):
+    return {"Auto Pay": "🤖", "Manual Pay": "✋"}.get(mode or "", "❓")
 
 
 def _month_label(month_key):
@@ -110,6 +117,7 @@ def _merge_row(inst):
     return (
         "✓" if inst.get("status") == "Paid" else "",
         inst.get("status", ""),
+        _payment_emoji(inst.get("payment_mode", "")),
         inst.get("description", ""),
         inst.get("due_date", ""),
         _fmt(inst.get("amount")),
@@ -153,6 +161,7 @@ def _merge_defn_row(defn):
         "✓" if defn.get("active") else "✗",
         defn.get("description", ""),
         defn.get("frequency", ""),
+        _payment_emoji(defn.get("payment_mode", "")),
         _fmt(defn.get("typical_amount")),
         str(defn.get("due_day", "")),
         _format_due_in(defn),
@@ -647,7 +656,7 @@ class InstDialog(ctk.CTkToplevel):
 
         title = "Add Bill" if mode == "add" else "Edit Bill"
         self.title(title)
-        self.geometry("440x570")
+        self.geometry("440x620")
         self.resizable(False, False)
         self.after(100, self.grab_set)
         self.after(100, self.focus_set)
@@ -657,24 +666,32 @@ class InstDialog(ctk.CTkToplevel):
             padx=16, pady=(14, 6), anchor="w")
 
         self._vars = {}
+        _pm_raw = inst.get("payment_mode", "") if inst else ""
+        _pm_default = _pm_raw if _pm_raw in ("Auto Pay", "Manual Pay") else "Not Set"
         fields = [
-            ("Expense",   "entry", inst["description"] if inst else ""),
-            ("Status",    "combo", inst["status"]      if inst else STATUSES[0]),
-            ("Due Date",  "entry", inst["due_date"]    if inst else ""),
-            ("Amount",    "entry", str(inst["amount"]) if inst else ""),
-            ("Frequency", "combo", inst["frequency"]   if inst else FREQUENCIES[0]),
-            ("Date Paid", "entry", inst["date_paid"]   if inst else ""),
-            ("Notes",     "entry", inst["notes"]       if inst else ""),
+            ("Expense",        "entry", inst["description"] if inst else ""),
+            ("Status",         "combo", inst["status"]      if inst else STATUSES[0]),
+            ("Payment Mode",   "combo", _pm_default),
+            ("Due Date",       "entry", inst["due_date"]    if inst else ""),
+            ("Amount",         "entry", str(inst["amount"]) if inst else ""),
+            ("Frequency",      "combo", inst["frequency"]   if inst else FREQUENCIES[0]),
+            ("Date Paid",      "entry", inst["date_paid"]   if inst else ""),
+            ("Notes",          "entry", inst["notes"]       if inst else ""),
         ]
         for label, kind, default in fields:
             row = ctk.CTkFrame(self, fg_color="transparent")
             row.pack(fill="x", padx=16, pady=5)
-            ctk.CTkLabel(row, text=label, width=100, anchor="w").pack(side="left")
+            ctk.CTkLabel(row, text=label, width=110, anchor="w").pack(side="left")
             var = tk.StringVar(value=str(default))
             if kind == "entry":
                 ctk.CTkEntry(row, textvariable=var, width=260).pack(side="left")
             else:
-                choices = STATUSES if label == "Status" else FREQUENCIES
+                if label == "Status":
+                    choices = STATUSES
+                elif label == "Payment Mode":
+                    choices = PAYMENT_MODES
+                else:
+                    choices = FREQUENCIES
                 ctk.CTkOptionMenu(row, values=choices, variable=var,
                                   width=260).pack(side="left")
             self._vars[label] = var
@@ -706,15 +723,17 @@ class InstDialog(ctk.CTkToplevel):
             self._err.configure(text="Amount must be a number.")
             return
 
+        _pm = self._vars["Payment Mode"].get()
         data = {
-            "month_key":   self._month_key,
-            "description": desc,
-            "status":      self._vars["Status"].get(),
-            "due_date":    due_date,
-            "amount":      amount,
-            "frequency":   self._vars["Frequency"].get(),
-            "date_paid":   self._vars["Date Paid"].get().strip(),
-            "notes":       self._vars["Notes"].get().strip(),
+            "month_key":    self._month_key,
+            "description":  desc,
+            "status":       self._vars["Status"].get(),
+            "payment_mode": "" if _pm == "Not Set" else _pm,
+            "due_date":     due_date,
+            "amount":       amount,
+            "frequency":    self._vars["Frequency"].get(),
+            "date_paid":    self._vars["Date Paid"].get().strip(),
+            "notes":        self._vars["Notes"].get().strip(),
         }
         if self._mode == "add":
             db.insert_instance(data, DB_PATH)
@@ -735,7 +754,7 @@ class DefnDialog(ctk.CTkToplevel):
 
         title = "Add Definition" if mode == "add" else "Edit Definition"
         self.title(title)
-        self.geometry("480x600")
+        self.geometry("480x650")
         self.resizable(False, False)
         self.after(100, self.grab_set)
         self.after(100, self.focus_set)
@@ -784,6 +803,17 @@ class DefnDialog(ctk.CTkToplevel):
         self._due_in_hint = ctk.CTkLabel(self, text="", font=ctk.CTkFont(size=10),
                                           text_color=C["muted"])
         self._due_in_hint.pack(padx=16, anchor="w")
+
+        # Payment Mode
+        pm_row = ctk.CTkFrame(self, fg_color="transparent")
+        pm_row.pack(fill="x", padx=16, pady=5)
+        ctk.CTkLabel(pm_row, text="Payment Mode", width=110, anchor="w").pack(side="left")
+        _pm_raw = defn.get("payment_mode", "") if defn else ""
+        _pm_default = _pm_raw if _pm_raw in ("Auto Pay", "Manual Pay") else "Not Set"
+        self._pm_var = tk.StringVar(value=_pm_default)
+        ctk.CTkOptionMenu(pm_row, values=PAYMENT_MODES, variable=self._pm_var,
+                          width=270).pack(side="left")
+        self._vars["Payment Mode"] = self._pm_var
 
         # Notes
         notes_row = ctk.CTkFrame(self, fg_color="transparent")
@@ -868,6 +898,7 @@ class DefnDialog(ctk.CTkToplevel):
                 return
             months_a = due_in
 
+        _pm = self._vars["Payment Mode"].get()
         data = {
             "description":    desc,
             "frequency":      freq,
@@ -877,6 +908,7 @@ class DefnDialog(ctk.CTkToplevel):
             "adhoc_month":    adhoc_m,
             "active":         self._defn["active"] if self._defn else 1,
             "notes":          self._vars["Notes"].get().strip(),
+            "payment_mode":   "" if _pm == "Not Set" else _pm,
         }
         if self._mode == "add":
             db.insert_definition(data, DB_PATH)

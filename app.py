@@ -219,6 +219,8 @@ class CombinedDashboard(ctk.CTkFrame):
         super().__init__(parent, fg_color="transparent", corner_radius=0)
         self._app = app
         self._selected_id = None
+        self._sort_col = None
+        self._sort_asc = True
         self._build()
 
     def _build(self):
@@ -287,7 +289,7 @@ class CombinedDashboard(ctk.CTkFrame):
 
         for col, width in GRID_COLUMNS:
             anchor = "w" if col in LEFT_ALIGN else "e"
-            self._tree.heading(col, text=col)
+            self._tree.heading(col, text=col, command=lambda c=col: self._sort_by(c))
             self._tree.column(col, width=width, minwidth=50, anchor=anchor, stretch=False)
 
         self._tree.tag_configure("due",     background="#2b2b1e", foreground="#fde68a")
@@ -340,6 +342,44 @@ class CombinedDashboard(ctk.CTkFrame):
         for inst in annotated:
             self._tree.insert("", "end", iid=str(inst["id"]),
                               values=_merge_row(inst), tags=(_inst_tag(inst),))
+        if self._sort_col:
+            self._apply_sort()
+
+    def _sort_by(self, col):
+        if self._sort_col == col:
+            self._sort_asc = not self._sort_asc
+        else:
+            self._sort_col = col
+            self._sort_asc = True
+        self._apply_sort()
+
+    def _apply_sort(self):
+        for col, _ in GRID_COLUMNS:
+            self._tree.heading(col, text=col)
+        arrow = " ▲" if self._sort_asc else " ▼"
+        self._tree.heading(self._sort_col, text=self._sort_col + arrow)
+        items = [(self._tree.set(k, self._sort_col), k)
+                 for k in self._tree.get_children("")]
+        items.sort(key=lambda x: self._sort_key(self._sort_col, x[0]),
+                   reverse=not self._sort_asc)
+        for idx, (_, k) in enumerate(items):
+            self._tree.move(k, "", idx)
+
+    def _sort_key(self, col, val):
+        if col == "Amount":
+            try:
+                return float(val.replace("$", "").replace(",", ""))
+            except ValueError:
+                return 0.0
+        if col in ("Due Date", "Date Paid"):
+            if not val:
+                return (9999, 99, 99)
+            try:
+                m, d, y = val.split("/")
+                return (int(y), int(m), int(d))
+            except Exception:
+                return (9999, 99, 99)
+        return val.lower()
 
     def _on_select(self, _=None):
         sel = self._tree.selection()

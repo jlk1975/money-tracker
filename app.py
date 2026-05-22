@@ -250,6 +250,7 @@ class CombinedDashboard(ctk.CTkFrame):
         for label, cmd in [
             ("+ Add Bill",      self._add),
             ("✎ Edit",          self._edit),
+            ("✗ Mark Unpaid",   self._mark_unpaid),
             ("✓ Mark Paid",     self._mark_paid),
             ("🗑 Delete",        self._delete),
             ("⬇ Export CSV",    self._export),
@@ -415,6 +416,24 @@ class CombinedDashboard(ctk.CTkFrame):
         db.update_instance(self._selected_id, updated, DB_PATH)
         self._app.refresh()
         self._app.flash(f"Marked paid: {inst.get('description', '')[:40]}")
+
+    def _mark_unpaid(self):
+        if not self._selected_id:
+            self._app.flash("Select a bill to mark as unpaid.")
+            return
+        annotated, _ = _load_and_annotate(self._app.current_month())
+        inst = next((b for b in annotated if b["id"] == self._selected_id), None)
+        if not inst:
+            return
+        if inst.get("status") == "Due":
+            self._app.flash("Bill is already unpaid.")
+            return
+        updated = dict(inst)
+        updated["status"]    = "Due"
+        updated["date_paid"] = ""
+        db.update_instance(self._selected_id, updated, DB_PATH)
+        self._app.refresh()
+        self._app.flash(f"Marked unpaid: {inst.get('description', '')[:40]}")
 
     def _delete(self):
         if not self._selected_id:

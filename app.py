@@ -367,7 +367,7 @@ class CombinedDashboard(ctk.CTkFrame):
             ProgressCard(row2, "Payment Progress", _pct,
                          sub=f"{_pct*100:.0f}%  —  {_fmt(_paid)} of {_fmt(_total)}").grid(
                 row=0, column=0, sticky="nsew", padx=(0, 6), pady=4)
-            KPICard(row2, "TBD2", "TBD2").grid(
+            KPICard(row2, "$$$ Funded", "TBD2").grid(
                 row=0, column=1, sticky="nsew", padx=6, pady=4)
             KPICard(row2, "TBD3", "TBD3").grid(
                 row=0, column=2, sticky="nsew", padx=6, pady=4)

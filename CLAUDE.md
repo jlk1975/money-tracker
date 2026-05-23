@@ -78,6 +78,7 @@ python3 wipe.py    # interactive: wipe instances only, or everything
   - Row 2: Funded Not Paid, Funding Progress, Funded, Not Funded
   - Right sidebar: Spending by Vibe + By Pay Mode breakdowns
   - Nav bar vibe filter buttons (🌟 🤷 💔): toggle to filter table + all 8 KPI widgets to selected vibes; none selected = show all; stored in `_vibe_filter` set on `CombinedDashboard`
+  - Nav bar center label: "Bills This Month: $X,XXX.XX" — always shows the full unfiltered month total (due + paid); centered via `place(relx=0.5)` so it stays under the tab buttons regardless of vibe filter state
   - **Funding Progress** widget label is dynamic: shows `"Funded through [date] · [days]"` (from `funded_through_parts()`); falls back to `"Funding Progress"` when nothing is funded
   - **Due** and **Not Funded** KPI values turn green when $0.00, red otherwise
   - **Toolbar** (dashboard only): search box filters table rows live by description; "Show Paid (N)" and "Show Unpaid (N)" toggle buttons filter by status — mutually exclusive, counts reflect current vibe-filtered display; search and status filter stack

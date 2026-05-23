@@ -379,6 +379,13 @@ class CombinedDashboard(ctk.CTkFrame):
             btn.pack(side="left", padx=(6, 0), pady=7)
             self._vibe_btns[emoji] = (btn, color)
 
+        self._month_total_lbl = ctk.CTkLabel(
+            self._nav_bar, text="",
+            font=ctk.CTkFont(size=15, weight="bold"),
+            text_color=C["heading"],
+        )
+        self._month_total_lbl.place(relx=0.5, rely=0.5, anchor="center")
+
         self._toggle_btn = ctk.CTkButton(self._nav_bar, text="▲ Hide Summary",
                                           width=120, height=28,
                                           command=self._toggle_metrics)
@@ -555,6 +562,9 @@ class CombinedDashboard(ctk.CTkFrame):
             state="normal" if self._app.can_navigate_left() else "disabled")
         self._right_btn.configure(
             state="normal" if self._app.can_navigate_right() else "disabled")
+
+        month_total = summary["total_due"] + summary["total_paid"]
+        self._month_total_lbl.configure(text=f"Bills This Month:  ${month_total:,.2f}")
 
         if self._vibe_filter:
             display = [b for b in annotated

@@ -27,9 +27,9 @@ python3 wipe.py    # interactive: wipe instances only, or everything
 
 | File | Purpose |
 |------|---------|
-| `db.py` | All SQLite access — four tables, see schema below |
+| `db.py` | All SQLite access — six tables, see schema below |
 | `calc.py` | Pure functions: `annotate_instances()`, `calculate_summary()`, `funded_through_parts()` |
-| `app.py` | customtkinter GUI — 3 tabs: Dashboard, Definitions, Debt |
+| `app.py` | customtkinter GUI — 4 tabs: Dashboard, Definitions, Debt, Register |
 | `seed.py` | One-time seeder using `tests/fixtures.py` sample data |
 | `wipe.py` | Interactive wipe utility |
 | `tests/fixtures.py` | 19 sample definitions + expected totals (SAMPLE_JUNE_TOTAL, SAMPLE_MAY_TOTAL) |
@@ -60,6 +60,14 @@ python3 wipe.py    # interactive: wipe instances only, or everything
 - UNIQUE constraint on `(debt_id, month_key)` — `INSERT OR REPLACE` for upserts
 - User logs a new balance each month by clicking a debt row; most recent entry is the "current" balance
 
+**`register_transactions`** — one row per checking account transaction
+- `id`, `date` (MM/DD/YYYY), `description`, `type` ("Deposit" or "Payment"), `amount` (REAL, always positive), `notes`
+- `transaction_number` — bank-assigned transaction ID; populated on CSV import, blank for manual entries; used for duplicate detection
+
+**`account_settings`** — single-row table (id=1) for the checking account
+- `account_name`, `starting_balance` (REAL), `as_of_date` (MM/DD/YYYY, optional reference)
+- Read/written via `db.get_account_settings()` / `db.set_account_settings()`
+
 ## Key concepts
 
 - **Month key format**: `"YYYY-MM"` strings throughout
@@ -71,8 +79,9 @@ python3 wipe.py    # interactive: wipe instances only, or everything
 - **`calculate_summary()`** returns `total_due`, `total_paid`, `bill_count`
 - **`funded_through_parts(instances, month_key)`** returns `(days_str, caption_str)` — consecutive funded-through date for unpaid bills from today; days_str is `"X days"`, `"today"`, or `"0 days"`
 - **Funded workflow**: bills must be marked Funded before they can be marked Paid; toolbar has Mark Funded / Mark Not Funded / Mark Paid / Mark Unpaid buttons
-- **Tab switching**: no CTkTabview — manual frame-swap via `_switch_tab()`; "Dashboard" / "Definitions" / "Debt" buttons centered in header; active tab highlighted in blue, inactive in `C["card2"]`
+- **Tab switching**: no CTkTabview — manual frame-swap via `_switch_tab()`; "Dashboard" / "Definitions" / "Debt" / "Register" buttons centered in header; active tab highlighted in blue, inactive in `C["card2"]`
 - **Header**: 💰 emoji (size 36) on left and right ends; tab buttons centered via 3-column grid layout; window title is "Bill Tracker"
+- **`self._register` is a reserved name** on `ctk.CTk` (shadows tkinter's internal `_register()` method) — the Register tab instance is stored as `self._reg_tab`
 - **Dashboard tab**: 2 rows of 4 widgets + collapsible toggle; Definitions tab unchanged
   - Row 1: `VibeBarsCard` (horizontal bar chart by vibe emoji), Payment Progress, Paid, Due
   - Row 2: Funded Not Paid, Funding Progress, Funded, Not Funded
@@ -84,7 +93,9 @@ python3 wipe.py    # interactive: wipe instances only, or everything
   - **Toolbar** (dashboard only): search box filters table rows live by description; "Show Paid (N)" and "Show Unpaid (N)" toggle buttons filter by status — mutually exclusive, counts reflect current vibe-filtered display; search and status filter stack
 - **VibeBarsCard**: replaces old "Total Bills" KPI; tk.Canvas with `height=1` hint (prevents Tk 150px default); draws horizontal bars — emoji left, bar, count right; bars spread evenly to fill card height via `_paint` on `<Configure>`
 - **`_draw` conflict**: `ctk.CTkFrame` calls `self._draw()` internally — never name a canvas paint method `_draw` in a CTkFrame subclass; use `_paint` instead
+- **Definitions tab** (`DefinitionsTab`): table is sortable by column heading click; search box in toolbar filters live across Description, Frequency, and Notes
 - **Debt tab** (`DebtTrackerTab`): summary card at top shows Total Debt / Total Monthly Payments / Years Until Debt Free; toolbar has Add/Edit/Delete; clicking a debt row opens `BalanceDialog` to log balance for current month; chart at bottom (`tk.Canvas`) toggles between Total and Per Debt trend lines; table is sortable by column heading click
+- **Register tab** (`RegisterTab`): stored as `self._reg_tab` on `MoneyTrackerApp`; account info bar shows account name + current balance + "⚙ Account Settings" button; toolbar has Import CSV (planned) / Add / Edit / Delete; table columns: Date | Description | Payment | Deposit | Balance | Notes; Balance column always reflects chronological running balance regardless of current sort; deposit rows shown in green; negative balance rows shown in red; `AccountSettingsDialog` sets account name, starting balance, and as-of date; `TransactionDialog` has Deposit/Payment toggle
 - **Debt balance workflow**: one `debt_balances` row per debt per month; clicking a debt row always logs for today's YYYY-MM; multiple updates in same month overwrite (last write wins); chart plots all historical entries
 - **Years Until Debt Free**: derived from latest `payoff_date` across all debts; shows "N/A" if any debt has no payoff date set
 

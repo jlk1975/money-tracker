@@ -5,3 +5,4 @@ __pycache__/
 *.pyo
 settings.json
 .venv/
+PLAN.md

@@ -89,6 +89,17 @@ DEBT_COLUMNS = [
 ]
 DEBT_LEFT_ALIGN = {"Debt", "Payoff Date"}
 
+# ── Register tab grid ─────────────────────────────────────────────────────────
+REG_COLUMNS = [
+    ("Date",        90),
+    ("Description",260),
+    ("Payment",    105),
+    ("Deposit",    105),
+    ("Balance",    115),
+    ("Notes",      200),
+]
+REG_LEFT_ALIGN = {"Date", "Description", "Notes"}
+
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -832,6 +843,11 @@ class DefinitionsTab(ctk.CTkFrame):
         super().__init__(parent, fg_color="transparent", corner_radius=0)
         self._app = app
         self._selected_id = None
+        self._sort_col = None
+        self._sort_asc = True
+        self._definitions = []
+        self._search_var = tk.StringVar()
+        self._search_var.trace_add("write", lambda *_: self._apply_search_filter())
         self._build()
 
     def _build(self):
@@ -846,6 +862,9 @@ class DefinitionsTab(ctk.CTkFrame):
         ]:
             ctk.CTkButton(sub, text=label, width=130, height=30,
                           command=cmd).pack(side="right", padx=6, pady=7)
+        ctk.CTkEntry(sub, textvariable=self._search_var,
+                     placeholder_text="🔍  Search definitions...",
+                     width=200, height=30).pack(side="left", padx=(12, 0), pady=7)
 
         container = tk.Frame(self, bg="#1a1a2e")
         container.pack(fill="both", expand=True)
@@ -878,7 +897,7 @@ class DefinitionsTab(ctk.CTkFrame):
 
         for col, width in DEF_COLUMNS:
             anchor = "w" if col in DEF_LEFT_ALIGN else "e"
-            self._tree.heading(col, text=col)
+            self._tree.heading(col, text=col, command=lambda c=col: self._sort_by(c))
             self._tree.column(col, width=width, minwidth=40, anchor=anchor, stretch=False)
 
         self._tree.tag_configure("active",   foreground="#e0e0f0")
@@ -888,12 +907,69 @@ class DefinitionsTab(ctk.CTkFrame):
         self._tree.bind("<Double-1>", lambda _: self._edit())
 
     def refresh(self, definitions):
+        self._definitions = definitions
+        self._apply_search_filter()
+
+    def _apply_search_filter(self):
+        q = self._search_var.get().strip().lower()
+        rows = self._definitions
+        if q:
+            rows = [d for d in rows if
+                    q in d.get("description", "").lower() or
+                    q in d.get("frequency", "").lower() or
+                    q in d.get("notes", "").lower()]
         self._tree.delete(*self._tree.get_children())
         self._selected_id = None
-        for defn in definitions:
+        for defn in rows:
             tag = "active" if defn.get("active") else "inactive"
             self._tree.insert("", "end", iid=str(defn["id"]),
                               values=_merge_defn_row(defn), tags=(tag,))
+        if self._sort_col:
+            self._apply_sort()
+
+    def _sort_by(self, col):
+        if self._sort_col == col:
+            self._sort_asc = not self._sort_asc
+        else:
+            self._sort_col = col
+            self._sort_asc = True
+        self._apply_sort()
+
+    def _apply_sort(self):
+        for col, _ in DEF_COLUMNS:
+            self._tree.heading(col, text=col)
+        arrow = " ▲" if self._sort_asc else " ▼"
+        self._tree.heading(self._sort_col, text=self._sort_col + arrow)
+        items = [(self._tree.set(k, self._sort_col), k)
+                 for k in self._tree.get_children("")]
+        if self._sort_col == "Vibe":
+            set_items   = [(v, k) for v, k in items if v]
+            unset_items = [(v, k) for v, k in items if not v]
+            set_items.sort(key=lambda x: self._sort_key("Vibe", x[0]),
+                           reverse=not self._sort_asc)
+            items = set_items + unset_items
+        else:
+            items.sort(key=lambda x: self._sort_key(self._sort_col, x[0]),
+                       reverse=not self._sort_asc)
+        for idx, (_, k) in enumerate(items):
+            self._tree.move(k, "", idx)
+
+    def _sort_key(self, col, val):
+        if col == "Vibe":
+            return {"🌟": 0, "🤷": 1, "💔": 2}.get(val, 3)
+        if col == "Active":
+            return 0 if val == "✓" else 1
+        if col == "Typical $":
+            try:
+                return float(val.replace("$", "").replace(",", ""))
+            except ValueError:
+                return 0.0
+        if col == "Due Day":
+            try:
+                return int(val)
+            except ValueError:
+                return 0
+        return val.lower()
 
     def _on_select(self, _=None):
         sel = self._tree.selection()
@@ -1290,6 +1366,240 @@ class DebtTrackerTab(ctk.CTkFrame):
                                self._app.refresh()))
 
 
+# ── Register Tab ─────────────────────────────────────────────────────────────
+
+class RegisterTab(ctk.CTkFrame):
+    def __init__(self, parent, app):
+        super().__init__(parent, fg_color="transparent", corner_radius=0)
+        self._app = app
+        self._selected_id = None
+        self._sort_col = "Date"
+        self._sort_asc = True
+        self._transactions = []
+        self._balances = {}
+        self._acct_settings = {"account_name": "", "starting_balance": 0.0, "as_of_date": ""}
+        self._build()
+
+    def _build(self):
+        # Account info bar
+        info_bar = ctk.CTkFrame(self, height=44, corner_radius=0, fg_color=C["card"])
+        info_bar.pack(fill="x")
+        info_bar.pack_propagate(False)
+        self._acct_name_label = ctk.CTkLabel(
+            info_bar, text="No account configured",
+            font=ctk.CTkFont(size=13, weight="bold"), text_color=C["heading"])
+        self._acct_name_label.pack(side="left", padx=16)
+        self._balance_label = ctk.CTkLabel(
+            info_bar, text="Balance: —",
+            font=ctk.CTkFont(size=13), text_color=C["green"])
+        self._balance_label.pack(side="left", padx=24)
+        ctk.CTkButton(info_bar, text="⚙ Account Settings", width=155, height=30,
+                      command=self._account_settings).pack(side="right", padx=12, pady=7)
+
+        # Toolbar
+        sub = ctk.CTkFrame(self, height=44, corner_radius=0, fg_color=C["card2"])
+        sub.pack(fill="x")
+        sub.pack_propagate(False)
+        for label, cmd in [
+            ("+ Add",    self._add),
+            ("✎ Edit",   self._edit),
+            ("🗑 Delete", self._delete),
+        ]:
+            ctk.CTkButton(sub, text=label, width=110, height=30,
+                          command=cmd).pack(side="right", padx=6, pady=7)
+
+        # Table
+        container = tk.Frame(self, bg="#1a1a2e")
+        container.pack(fill="both", expand=True)
+
+        style = ttk.Style()
+        style.configure("Reg.Treeview",
+                        background="#2b2b3b", foreground="#e0e0e0",
+                        fieldbackground="#2b2b3b", rowheight=26,
+                        font=("Consolas", 11))
+        style.configure("Reg.Treeview.Heading",
+                        background="#1f1f2e", foreground="#8ab4f8",
+                        font=("Helvetica", 11, "bold"), relief="flat")
+        style.map("Reg.Treeview",
+                  background=[("selected", "#3a5a8a")],
+                  foreground=[("selected", "#ffffff")])
+
+        col_ids = [c[0] for c in REG_COLUMNS]
+        vsb = ttk.Scrollbar(container, orient="vertical")
+        hsb = ttk.Scrollbar(container, orient="horizontal")
+        vsb.pack(side="right", fill="y")
+        hsb.pack(side="bottom", fill="x")
+        self._tree = ttk.Treeview(container, columns=col_ids, show="headings",
+                                   style="Reg.Treeview",
+                                   yscrollcommand=vsb.set,
+                                   xscrollcommand=hsb.set,
+                                   selectmode="browse")
+        vsb.config(command=self._tree.yview)
+        hsb.config(command=self._tree.xview)
+        self._tree.pack(fill="both", expand=True)
+
+        for col, width in REG_COLUMNS:
+            anchor = "w" if col in REG_LEFT_ALIGN else "e"
+            self._tree.heading(col, text=col, command=lambda c=col: self._sort_by(c))
+            self._tree.column(col, width=width, minwidth=40, anchor=anchor, stretch=False)
+
+        self._tree.tag_configure("deposit", foreground=C["green"])
+        self._tree.tag_configure("payment", foreground="#e0e0f0")
+        self._tree.tag_configure("negative_bal", foreground=C["red"])
+
+        self._tree.bind("<<TreeviewSelect>>", self._on_select)
+        self._tree.bind("<Double-1>", lambda _: self._edit())
+
+        self._apply_sort_arrow()
+
+    def _apply_sort_arrow(self):
+        for col, _ in REG_COLUMNS:
+            self._tree.heading(col, text=col)
+        arrow = " ▲" if self._sort_asc else " ▼"
+        self._tree.heading(self._sort_col, text=self._sort_col + arrow)
+
+    def _compute_running_balances(self, transactions, starting_balance):
+        def date_key(t):
+            d = t.get("date", "")
+            try:
+                m, day, y = d.split("/")
+                return (int(y), int(m), int(day), t["id"])
+            except Exception:
+                return (9999, 99, 99, t["id"])
+        sorted_txns = sorted(transactions, key=date_key)
+        balances = {}
+        running = starting_balance
+        for txn in sorted_txns:
+            if txn["type"] == "Deposit":
+                running += txn["amount"]
+            else:
+                running -= txn["amount"]
+            balances[txn["id"]] = running
+        return balances
+
+    def refresh(self, transactions, acct_settings):
+        self._transactions = transactions
+        self._acct_settings = acct_settings
+        starting = acct_settings.get("starting_balance", 0.0)
+        self._balances = self._compute_running_balances(transactions, starting)
+
+        name = acct_settings.get("account_name", "").strip()
+        self._acct_name_label.configure(text=name if name else "No account configured")
+
+        if self._balances:
+            # Current balance = balance after last transaction (by date)
+            def date_key(t):
+                d = t.get("date", "")
+                try:
+                    m, day, y = d.split("/")
+                    return (int(y), int(m), int(day), t["id"])
+                except Exception:
+                    return (9999, 99, 99, t["id"])
+            last_txn = max(transactions, key=date_key)
+            cur_bal = self._balances[last_txn["id"]]
+        else:
+            cur_bal = starting
+
+        bal_color = C["green"] if cur_bal >= 0 else C["red"]
+        bal_str = f"${cur_bal:,.2f}" if cur_bal >= 0 else f"-${abs(cur_bal):,.2f}"
+        self._balance_label.configure(text=f"Balance: {bal_str}", text_color=bal_color)
+
+        self._populate_tree()
+
+    def _populate_tree(self):
+        self._tree.delete(*self._tree.get_children())
+        self._selected_id = None
+        for txn in self._transactions:
+            bal = self._balances.get(txn["id"], self._acct_settings.get("starting_balance", 0.0))
+            tag = "deposit" if txn["type"] == "Deposit" else "payment"
+            if bal < 0:
+                tag = "negative_bal"
+            self._tree.insert("", "end", iid=str(txn["id"]),
+                              values=_merge_reg_row(txn, bal), tags=(tag,))
+        self._apply_sort()
+
+    def _sort_by(self, col):
+        if self._sort_col == col:
+            self._sort_asc = not self._sort_asc
+        else:
+            self._sort_col = col
+            self._sort_asc = True
+        self._apply_sort()
+
+    def _apply_sort(self):
+        self._apply_sort_arrow()
+        items = [(self._tree.set(k, self._sort_col), k)
+                 for k in self._tree.get_children("")]
+        items.sort(key=lambda x: self._sort_key(self._sort_col, x[0]),
+                   reverse=not self._sort_asc)
+        for idx, (_, k) in enumerate(items):
+            self._tree.move(k, "", idx)
+
+    def _sort_key(self, col, val):
+        if col == "Date":
+            if not val:
+                return (9999, 99, 99)
+            try:
+                m, d, y = val.split("/")
+                return (int(y), int(m), int(d))
+            except Exception:
+                return (9999, 99, 99)
+        if col in ("Payment", "Deposit"):
+            if not val:
+                return 0.0
+            try:
+                return float(val.replace("$", "").replace(",", ""))
+            except ValueError:
+                return 0.0
+        if col == "Balance":
+            try:
+                return float(val.replace("$", "").replace(",", ""))
+            except ValueError:
+                return 0.0
+        return val.lower()
+
+    def _on_select(self, _=None):
+        sel = self._tree.selection()
+        self._selected_id = int(sel[0]) if sel else None
+
+    def _add(self):
+        TransactionDialog(self, self._app, mode="add")
+
+    def _edit(self):
+        if not self._selected_id:
+            self._app.flash("Select a transaction to edit.")
+            return
+        txn = next((t for t in self._transactions if t["id"] == self._selected_id), None)
+        if txn:
+            TransactionDialog(self, self._app, mode="edit", txn=txn)
+
+    def _delete(self):
+        if not self._selected_id:
+            self._app.flash("Select a transaction to delete.")
+            return
+        ConfirmDialog(self, self._app,
+                      "Delete this transaction?\nThis cannot be undone.",
+                      lambda: (db.delete_transaction(self._selected_id, DB_PATH),
+                               self._app.refresh()))
+
+    def _account_settings(self):
+        AccountSettingsDialog(self, self._app, self._acct_settings)
+
+
+def _merge_reg_row(txn, balance):
+    payment = f"${txn['amount']:,.2f}" if txn["type"] == "Payment" else ""
+    deposit  = f"${txn['amount']:,.2f}" if txn["type"] == "Deposit"  else ""
+    bal_str  = f"${balance:,.2f}" if balance >= 0 else f"-${abs(balance):,.2f}"
+    return (
+        txn.get("date", ""),
+        txn.get("description", ""),
+        payment,
+        deposit,
+        bal_str,
+        txn.get("notes", ""),
+    )
+
+
 # ── Balance Update Dialog ─────────────────────────────────────────────────────
 
 class BalanceDialog(ctk.CTkToplevel):
@@ -1673,8 +1983,8 @@ class DefnDialog(ctk.CTkToplevel):
             self._due_in_row.pack_forget()
             self._due_in_hint.pack_forget()
         else:
-            self._due_in_row.pack(fill="x", padx=16, pady=5, before=self._due_in_hint)
             self._due_in_hint.pack(padx=16, anchor="w", before=self._err)
+            self._due_in_row.pack(fill="x", padx=16, pady=5, before=self._due_in_hint)
             self._due_in_label.configure(text=label or "Due In")
             self._due_in_entry.configure(state="normal")
             self._due_in_hint.configure(text=hint)
@@ -1765,6 +2075,187 @@ class ConfirmDialog(ctk.CTkToplevel):
         self.destroy()
 
 
+# ── Transaction Dialog ────────────────────────────────────────────────────────
+
+class TransactionDialog(ctk.CTkToplevel):
+    def __init__(self, parent, app, mode, txn=None):
+        super().__init__(parent)
+        self._app  = app
+        self._mode = mode
+        self._txn  = txn
+
+        title = "Add Transaction" if mode == "add" else "Edit Transaction"
+        self.title(title)
+        self.geometry("420x360")
+        self.resizable(False, False)
+        self.after(100, self.grab_set)
+        self.after(100, self.focus_set)
+
+        ctk.CTkLabel(self, text=title,
+                     font=ctk.CTkFont(size=16, weight="bold")).pack(
+            padx=16, pady=(14, 6), anchor="w")
+
+        today_str = date.today().strftime("%m/%d/%Y")
+
+        self._vars = {}
+        for label, default in [
+            ("Date",        txn["date"]        if txn else today_str),
+            ("Description", txn["description"] if txn else ""),
+            ("Amount",      str(txn["amount"]) if txn else ""),
+            ("Notes",       txn["notes"]       if txn else ""),
+        ]:
+            row = ctk.CTkFrame(self, fg_color="transparent")
+            row.pack(fill="x", padx=16, pady=5)
+            ctk.CTkLabel(row, text=label, width=100, anchor="w").pack(side="left")
+            var = tk.StringVar(value=str(default))
+            ctk.CTkEntry(row, textvariable=var, width=260).pack(side="left")
+            self._vars[label] = var
+
+        # Type toggle
+        type_row = ctk.CTkFrame(self, fg_color="transparent")
+        type_row.pack(fill="x", padx=16, pady=5)
+        ctk.CTkLabel(type_row, text="Type", width=100, anchor="w").pack(side="left")
+        self._type_var = tk.StringVar(value=txn["type"] if txn else "Payment")
+        self._dep_btn = ctk.CTkButton(type_row, text="Deposit",  width=125, height=30,
+                                      command=lambda: self._set_type("Deposit"))
+        self._pay_btn = ctk.CTkButton(type_row, text="Payment",  width=125, height=30,
+                                      command=lambda: self._set_type("Payment"))
+        self._dep_btn.pack(side="left", padx=(0, 4))
+        self._pay_btn.pack(side="left")
+        self._update_type_btns()
+
+        ctk.CTkLabel(self, text="Date format: MM/DD/YYYY",
+                     font=ctk.CTkFont(size=10), text_color=C["muted"]).pack(
+            padx=16, anchor="w")
+
+        self._err = ctk.CTkLabel(self, text="", text_color=C["red"],
+                                 font=ctk.CTkFont(size=11))
+        self._err.pack(padx=16, anchor="w")
+
+        btn_row = ctk.CTkFrame(self, fg_color="transparent")
+        btn_row.pack(fill="x", padx=16, pady=12, side="bottom")
+        ctk.CTkButton(btn_row, text="Save", width=120,
+                      command=self._save).pack(side="right", padx=(8, 0))
+        ctk.CTkButton(btn_row, text="Cancel", width=100,
+                      fg_color="transparent", border_width=1,
+                      command=self.destroy).pack(side="right")
+
+    def _set_type(self, t):
+        self._type_var.set(t)
+        self._update_type_btns()
+
+    def _update_type_btns(self):
+        t = self._type_var.get()
+        self._dep_btn.configure(
+            fg_color="#3a5a8a" if t == "Deposit" else C["border"],
+            text_color=C["heading"] if t == "Deposit" else C["muted"])
+        self._pay_btn.configure(
+            fg_color="#3a5a8a" if t == "Payment" else C["border"],
+            text_color=C["heading"] if t == "Payment" else C["muted"])
+
+    def _save(self):
+        date_str = self._vars["Date"].get().strip()
+        try:
+            parts = date_str.split("/")
+            if len(parts) != 3:
+                raise ValueError
+            m, d, y = int(parts[0]), int(parts[1]), int(parts[2])
+            if not (1 <= m <= 12 and 1 <= d <= 31 and y >= 1900):
+                raise ValueError
+        except ValueError:
+            self._err.configure(text="Date must be MM/DD/YYYY.")
+            return
+
+        desc = self._vars["Description"].get().strip()
+        if not desc:
+            self._err.configure(text="Description is required.")
+            return
+
+        try:
+            amount = float(self._vars["Amount"].get().replace("$", "").replace(",", ""))
+            if amount < 0:
+                raise ValueError
+        except ValueError:
+            self._err.configure(text="Amount must be a positive number.")
+            return
+
+        data = {
+            "date":        date_str,
+            "description": desc,
+            "type":        self._type_var.get(),
+            "amount":      amount,
+            "notes":       self._vars["Notes"].get().strip(),
+        }
+        if self._mode == "add":
+            db.insert_transaction(data, DB_PATH)
+        else:
+            db.update_transaction(self._txn["id"], data, DB_PATH)
+        self.destroy()
+        self._app.refresh()
+
+
+# ── Account Settings Dialog ───────────────────────────────────────────────────
+
+class AccountSettingsDialog(ctk.CTkToplevel):
+    def __init__(self, parent, app, current_settings):
+        super().__init__(parent)
+        self._app = app
+
+        self.title("Account Settings")
+        self.geometry("400x270")
+        self.resizable(False, False)
+        self.after(100, self.grab_set)
+        self.after(100, self.focus_set)
+
+        ctk.CTkLabel(self, text="Account Settings",
+                     font=ctk.CTkFont(size=16, weight="bold")).pack(
+            padx=16, pady=(14, 6), anchor="w")
+
+        self._vars = {}
+        for label, default in [
+            ("Account Name",     current_settings.get("account_name", "")),
+            ("Starting Balance", str(current_settings.get("starting_balance", "0.00"))),
+            ("As of Date",       current_settings.get("as_of_date", "")),
+        ]:
+            row = ctk.CTkFrame(self, fg_color="transparent")
+            row.pack(fill="x", padx=16, pady=5)
+            ctk.CTkLabel(row, text=label, width=130, anchor="w").pack(side="left")
+            var = tk.StringVar(value=str(default))
+            ctk.CTkEntry(row, textvariable=var, width=220).pack(side="left")
+            self._vars[label] = var
+
+        ctk.CTkLabel(self, text="As of Date format: MM/DD/YYYY  (optional reference only)",
+                     font=ctk.CTkFont(size=10), text_color=C["muted"]).pack(
+            padx=16, anchor="w")
+
+        self._err = ctk.CTkLabel(self, text="", text_color=C["red"],
+                                 font=ctk.CTkFont(size=11))
+        self._err.pack(padx=16, anchor="w")
+
+        btn_row = ctk.CTkFrame(self, fg_color="transparent")
+        btn_row.pack(fill="x", padx=16, pady=12, side="bottom")
+        ctk.CTkButton(btn_row, text="Save", width=120,
+                      command=self._save).pack(side="right", padx=(8, 0))
+        ctk.CTkButton(btn_row, text="Cancel", width=100,
+                      fg_color="transparent", border_width=1,
+                      command=self.destroy).pack(side="right")
+
+    def _save(self):
+        name = self._vars["Account Name"].get().strip()
+        try:
+            bal = float(self._vars["Starting Balance"].get().replace("$", "").replace(",", ""))
+        except ValueError:
+            self._err.configure(text="Starting Balance must be a number.")
+            return
+        db.set_account_settings({
+            "account_name":     name,
+            "starting_balance": bal,
+            "as_of_date":       self._vars["As of Date"].get().strip(),
+        }, DB_PATH)
+        self.destroy()
+        self._app.refresh()
+
+
 # ── Main Application ──────────────────────────────────────────────────────────
 
 class MoneyTrackerApp(ctk.CTk):
@@ -1839,7 +2330,7 @@ class MoneyTrackerApp(ctk.CTk):
         tab_group.grid(row=0, column=1, pady=10)
         ctk.CTkLabel(header, text="💰",
                      font=ctk.CTkFont(size=36)).grid(row=0, column=2, sticky="e", padx=18, pady=8)
-        for name in ("Dashboard", "Definitions", "Debt"):
+        for name in ("Dashboard", "Definitions", "Debt", "Register"):
             btn = ctk.CTkButton(
                 tab_group, text=name, width=130, height=30,
                 corner_radius=6,
@@ -1866,8 +2357,9 @@ class MoneyTrackerApp(ctk.CTk):
         self._dashboard = CombinedDashboard(content, self)
         self._dashboard.pack(fill="both", expand=True)
 
-        self._defs = DefinitionsTab(content, self)
-        self._debt_tab = DebtTrackerTab(content, self)
+        self._defs      = DefinitionsTab(content, self)
+        self._debt_tab  = DebtTrackerTab(content, self)
+        self._reg_tab  = RegisterTab(content, self)
 
         self._active_tab = "Dashboard"
         self._update_tab_btn_styles()
@@ -1879,12 +2371,15 @@ class MoneyTrackerApp(ctk.CTk):
         self._dashboard.pack_forget()
         self._defs.pack_forget()
         self._debt_tab.pack_forget()
+        self._reg_tab.pack_forget()
         if name == "Dashboard":
             self._dashboard.pack(fill="both", expand=True)
         elif name == "Definitions":
             self._defs.pack(fill="both", expand=True)
-        else:
+        elif name == "Debt":
             self._debt_tab.pack(fill="both", expand=True)
+        else:
+            self._reg_tab.pack(fill="both", expand=True)
         self._update_tab_btn_styles()
 
     def _update_tab_btn_styles(self):
@@ -1899,9 +2394,12 @@ class MoneyTrackerApp(ctk.CTk):
         definitions        = db.load_definitions(DB_PATH)
         debts              = db.load_debts(DB_PATH)
         balances           = db.get_all_debt_balances(DB_PATH)
+        transactions       = db.load_transactions(DB_PATH)
+        acct_settings      = db.get_account_settings(DB_PATH)
         self._dashboard.refresh(annotated, summary, self._current_month)
         self._defs.refresh(definitions)
         self._debt_tab.refresh(debts, balances)
+        self._reg_tab.refresh(transactions, acct_settings)
         self._update_status(annotated, summary)
 
     def _update_status(self, annotated, summary):

@@ -131,6 +131,24 @@ def init_db(db_path=DEFAULT_DB):
                 UNIQUE(debt_id, month_key)
             )
         """)
+        con.execute("""
+            CREATE TABLE IF NOT EXISTS register_transactions (
+                id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                date        TEXT    NOT NULL DEFAULT '',
+                description TEXT    NOT NULL DEFAULT '',
+                type        TEXT    NOT NULL DEFAULT 'Payment',
+                amount      REAL    NOT NULL DEFAULT 0,
+                notes       TEXT    NOT NULL DEFAULT ''
+            )
+        """)
+        con.execute("""
+            CREATE TABLE IF NOT EXISTS account_settings (
+                id               INTEGER PRIMARY KEY DEFAULT 1,
+                account_name     TEXT    NOT NULL DEFAULT '',
+                starting_balance REAL    NOT NULL DEFAULT 0,
+                as_of_date       TEXT    NOT NULL DEFAULT ''
+            )
+        """)
 
 
 # ── Bill Definitions CRUD ─────────────────────────────────────────────────────
@@ -424,3 +442,69 @@ def get_all_debt_balances(db_path=DEFAULT_DB):
             "SELECT debt_id, month_key, balance FROM debt_balances ORDER BY month_key"
         ).fetchall()
     return [_row_to_dict(r) for r in rows]
+
+
+# ── Register CRUD ─────────────────────────────────────────────────────────────
+
+def load_transactions(db_path=DEFAULT_DB):
+    with _conn(db_path) as con:
+        rows = con.execute(
+            "SELECT * FROM register_transactions ORDER BY date, id"
+        ).fetchall()
+    return [_row_to_dict(r) for r in rows]
+
+
+def insert_transaction(txn, db_path=DEFAULT_DB):
+    with _conn(db_path) as con:
+        cur = con.execute("""
+            INSERT INTO register_transactions (date, description, type, amount, notes)
+            VALUES (?, ?, ?, ?, ?)
+        """, (
+            txn.get("date", ""),
+            txn.get("description", ""),
+            txn.get("type", "Payment"),
+            txn.get("amount", 0.0),
+            txn.get("notes", ""),
+        ))
+        return cur.lastrowid
+
+
+def update_transaction(txn_id, txn, db_path=DEFAULT_DB):
+    with _conn(db_path) as con:
+        con.execute("""
+            UPDATE register_transactions
+            SET date=?, description=?, type=?, amount=?, notes=?
+            WHERE id=?
+        """, (
+            txn.get("date", ""),
+            txn.get("description", ""),
+            txn.get("type", "Payment"),
+            txn.get("amount", 0.0),
+            txn.get("notes", ""),
+            txn_id,
+        ))
+
+
+def delete_transaction(txn_id, db_path=DEFAULT_DB):
+    with _conn(db_path) as con:
+        con.execute("DELETE FROM register_transactions WHERE id=?", (txn_id,))
+
+
+def get_account_settings(db_path=DEFAULT_DB):
+    with _conn(db_path) as con:
+        row = con.execute("SELECT * FROM account_settings WHERE id=1").fetchone()
+    if row:
+        return _row_to_dict(row)
+    return {"account_name": "", "starting_balance": 0.0, "as_of_date": ""}
+
+
+def set_account_settings(settings, db_path=DEFAULT_DB):
+    with _conn(db_path) as con:
+        con.execute("""
+            INSERT OR REPLACE INTO account_settings (id, account_name, starting_balance, as_of_date)
+            VALUES (1, ?, ?, ?)
+        """, (
+            settings.get("account_name", ""),
+            settings.get("starting_balance", 0.0),
+            settings.get("as_of_date", ""),
+        ))

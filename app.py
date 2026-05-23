@@ -301,6 +301,11 @@ class CombinedDashboard(ctk.CTkFrame):
         self._metrics_visible = True
         self._vibe_filter = set()
         self._vibe_btns = {}
+        self._display = []
+        self._search_var = tk.StringVar()
+        self._search_var.trace_add("write", lambda *_: self._apply_search_filter())
+        self._status_filter = None
+        self._status_btns = {}
         self._build()
 
     def _build(self):
@@ -354,6 +359,16 @@ class CombinedDashboard(ctk.CTkFrame):
         ]:
             ctk.CTkButton(self._toolbar, text=label, width=width, height=30,
                           command=cmd).pack(side="left", padx=6, pady=7)
+        ctk.CTkEntry(self._toolbar, textvariable=self._search_var,
+                     placeholder_text="🔍  Search bills...",
+                     width=200, height=30).pack(side="left", padx=(12, 0), pady=7)
+        for label, status, color in [("Show Paid", "Paid", C["green"]),
+                                      ("Show Unpaid", "Due", C["red"])]:
+            btn = ctk.CTkButton(self._toolbar, text=label, width=100, height=30,
+                                fg_color=C["border"], hover_color=C["card2"],
+                                command=lambda s=status: self._toggle_status_filter(s))
+            btn.pack(side="left", padx=(8, 0), pady=7)
+            self._status_btns[status] = (btn, color)
 
         self._bottom = tk.Frame(self, bg="#1a1a2e")
         self._bottom.pack(fill="both", expand=True)
@@ -534,8 +549,9 @@ class CombinedDashboard(ctk.CTkFrame):
             KPICard(row1, "Paid",
                     _fmt(summary.get("total_paid", 0)), C["green"]).grid(
                 row=0, column=2, sticky="nsew", padx=6, pady=4)
+            _due = summary.get("total_due", 0)
             KPICard(row1, "Due",
-                    _fmt(summary.get("total_due", 0)), C["red"],
+                    _fmt(_due), C["green"] if _due == 0 else C["red"],
                     sub="Unpaid balance").grid(
                 row=0, column=3, sticky="nsew", padx=(6, 0), pady=4)
 
@@ -553,23 +569,23 @@ class CombinedDashboard(ctk.CTkFrame):
             _funded_total2  = sum(b.get("amount", 0) for b in display if b.get("funded"))
             _total2         = sum(b.get("amount", 0) for b in display)
             _fpct           = (_funded_total2 / _total2) if _total2 else 0
-            ProgressCard(row2, "Funding Progress", _fpct,
+            _days_str, _caption_str = calc.funded_through_parts(display, month_key)
+            _progress_label = (f"{_caption_str} · {_days_str}"
+                               if _days_str != "0 days" else "Funding Progress")
+            ProgressCard(row2, _progress_label, _fpct,
                          sub=f"{_fpct*100:.0f}%  —  {_fmt(_funded_total2)} of {_fmt(_total2)}").grid(
                 row=0, column=1, sticky="nsew", padx=6, pady=4)
             KPICard(row2, "Funded", _fmt(_funded_total), C["green"]).grid(
                 row=0, column=2, sticky="nsew", padx=6, pady=4)
             _not_funded_total = sum(b.get("amount", 0) for b in display if not b.get("funded"))
-            KPICard(row2, "Not Funded", _fmt(_not_funded_total), C["red"]).grid(
+            KPICard(row2, "Not Funded", _fmt(_not_funded_total),
+                    C["green"] if _not_funded_total == 0 else C["red"]).grid(
                 row=0, column=3, sticky="nsew", padx=(6, 0), pady=4)
 
 
-        self._tree.delete(*self._tree.get_children())
-        self._selected_id = None
-        for inst in display:
-            self._tree.insert("", "end", iid=str(inst["id"]),
-                              values=_merge_row(inst), tags=(_inst_tag(inst),))
-        if self._sort_col:
-            self._apply_sort()
+        self._display = display
+        self._update_status_btn_labels()
+        self._apply_search_filter()
         self._refresh_sidebar(display)
 
     def _sort_by(self, col):
@@ -579,6 +595,38 @@ class CombinedDashboard(ctk.CTkFrame):
             self._sort_col = col
             self._sort_asc = True
         self._apply_sort()
+
+    def _update_status_btn_labels(self):
+        counts = {"Paid": 0, "Due": 0}
+        for b in self._display:
+            s = b.get("status")
+            if s in counts:
+                counts[s] += 1
+        labels = {"Paid": f"Show Paid ({counts['Paid']})",
+                  "Due":  f"Show Unpaid ({counts['Due']})"}
+        for status, (btn, _) in self._status_btns.items():
+            btn.configure(text=labels[status])
+
+    def _toggle_status_filter(self, status):
+        self._status_filter = None if self._status_filter == status else status
+        for s, (btn, color) in self._status_btns.items():
+            btn.configure(fg_color=color if s == self._status_filter else C["border"])
+        self._apply_search_filter()
+
+    def _apply_search_filter(self):
+        q = self._search_var.get().strip().lower()
+        rows = self._display
+        if q:
+            rows = [b for b in rows if q in b.get("description", "").lower()]
+        if self._status_filter:
+            rows = [b for b in rows if b.get("status") == self._status_filter]
+        self._tree.delete(*self._tree.get_children())
+        self._selected_id = None
+        for inst in rows:
+            self._tree.insert("", "end", iid=str(inst["id"]),
+                              values=_merge_row(inst), tags=(_inst_tag(inst),))
+        if self._sort_col:
+            self._apply_sort()
 
     def _apply_sort(self):
         for col, _ in GRID_COLUMNS:

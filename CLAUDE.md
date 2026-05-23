@@ -28,7 +28,7 @@ python3 wipe.py    # interactive: wipe instances only, or everything
 | File | Purpose |
 |------|---------|
 | `db.py` | All SQLite access — two tables, see schema below |
-| `calc.py` | Pure functions: `annotate_instances()`, `calculate_summary()` |
+| `calc.py` | Pure functions: `annotate_instances()`, `calculate_summary()`, `funded_through_parts()` |
 | `app.py` | customtkinter GUI — 2 tabs: Dashboard, Definitions |
 | `seed.py` | One-time seeder using `tests/fixtures.py` sample data |
 | `wipe.py` | Interactive wipe utility |
@@ -58,6 +58,7 @@ python3 wipe.py    # interactive: wipe instances only, or everything
 - **Navigation**: left arrow = only to months with existing instances; right arrow = auto-generates up to 12 months ahead of today
 - **`annotate_instances()`** returns instances as a new list of dicts (no longer adds computed fields)
 - **`calculate_summary()`** returns `total_due`, `total_paid`, `bill_count`
+- **`funded_through_parts(instances, month_key)`** returns `(days_str, caption_str)` — consecutive funded-through date for unpaid bills from today; days_str is `"X days"`, `"today"`, or `"0 days"`
 - **Funded workflow**: bills must be marked Funded before they can be marked Paid; toolbar has Mark Funded / Mark Not Funded / Mark Paid / Mark Unpaid buttons
 - **Tab switching**: no CTkTabview — manual frame-swap via `_switch_tab()`; "Dashboard" / "Definitions" buttons centered in header; active tab highlighted in blue, inactive in `C["card2"]`
 - **Header**: 💰 emoji (size 36) on left and right ends; tab buttons centered via 3-column grid layout; window title is "Bill Tracker"
@@ -66,6 +67,9 @@ python3 wipe.py    # interactive: wipe instances only, or everything
   - Row 2: Funded Not Paid, Funding Progress, Funded, Not Funded
   - Right sidebar: Spending by Vibe + By Pay Mode breakdowns
   - Nav bar vibe filter buttons (🌟 🤷 💔): toggle to filter table + all 8 KPI widgets to selected vibes; none selected = show all; stored in `_vibe_filter` set on `CombinedDashboard`
+  - **Funding Progress** widget label is dynamic: shows `"Funded through [date] · [days]"` (from `funded_through_parts()`); falls back to `"Funding Progress"` when nothing is funded
+  - **Due** and **Not Funded** KPI values turn green when $0.00, red otherwise
+  - **Toolbar** (dashboard only): search box filters table rows live by description; "Show Paid (N)" and "Show Unpaid (N)" toggle buttons filter by status — mutually exclusive, counts reflect current vibe-filtered display; search and status filter stack
 - **VibeBarsCard**: replaces old "Total Bills" KPI; tk.Canvas with `height=1` hint (prevents Tk 150px default); draws horizontal bars — emoji left, bar, count right; bars spread evenly to fill card height via `_paint` on `<Configure>`
 - **`_draw` conflict**: `ctk.CTkFrame` calls `self._draw()` internally — never name a canvas paint method `_draw` in a CTkFrame subclass; use `_paint` instead
 

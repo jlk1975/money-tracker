@@ -46,8 +46,9 @@ python3 wipe.py    # interactive: wipe instances only, or everything
 **`bill_instances`** — one row per bill per month
 - `id`, `definition_id`, `month_key` (YYYY-MM), `description`
 - `status` (Due/Paid), `due_date` (MM/DD/YYYY), `amount`, `frequency`
-- `date_paid`, `notes`, `row_order`
+- `date_paid`, `notes`, `row_order`, `payment_mode`, `vibe`
 - `funded` (0/1) — whether the bill has been funded for the month (default 0)
+- `deleted` (0/1) — soft-delete flag; rows are never physically removed so `generate_month_instances` can see that a definition was already handled for the month and won't recreate it on restart
 
 **`debts`** — one row per debt (e.g. loan, credit card)
 - `id`, `name`, `interest_rate` (REAL), `monthly_payment` (REAL)

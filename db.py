@@ -101,6 +101,12 @@ def init_db(db_path=DEFAULT_DB):
             )
         except Exception:
             pass
+        try:
+            con.execute(
+                "ALTER TABLE bill_instances ADD COLUMN deleted INTEGER NOT NULL DEFAULT 0"
+            )
+        except Exception:
+            pass
         con.execute("""
             CREATE TABLE IF NOT EXISTS debts (
                 id              INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -203,7 +209,7 @@ def load_instances(month_key, db_path=DEFAULT_DB):
     """Return all instances for a month ordered by due_date, row_order."""
     with _conn(db_path) as con:
         rows = con.execute(
-            "SELECT * FROM bill_instances WHERE month_key=? ORDER BY due_date, row_order",
+            "SELECT * FROM bill_instances WHERE month_key=? AND deleted=0 ORDER BY due_date, row_order",
             (month_key,)
         ).fetchall()
     return [_row_to_dict(r) for r in rows]
@@ -272,9 +278,9 @@ def delete_instance(instance_id, db_path=DEFAULT_DB):
         if not row:
             return
         month_key = row["month_key"]
-        con.execute("DELETE FROM bill_instances WHERE id=?", (instance_id,))
+        con.execute("UPDATE bill_instances SET deleted=1 WHERE id=?", (instance_id,))
         rows = con.execute(
-            "SELECT id FROM bill_instances WHERE month_key=? ORDER BY row_order",
+            "SELECT id FROM bill_instances WHERE month_key=? AND deleted=0 ORDER BY row_order",
             (month_key,)
         ).fetchall()
         for i, r in enumerate(rows, start=1):

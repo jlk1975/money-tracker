@@ -101,6 +101,30 @@ def init_db(db_path=DEFAULT_DB):
             )
         except Exception:
             pass
+        con.execute("""
+            CREATE TABLE IF NOT EXISTS debts (
+                id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                sort_order      INTEGER NOT NULL DEFAULT 0,
+                name            TEXT    NOT NULL DEFAULT '',
+                interest_rate   REAL    NOT NULL DEFAULT 0,
+                monthly_payment REAL    NOT NULL DEFAULT 0,
+                payoff_date     TEXT    NOT NULL DEFAULT '',
+                notes           TEXT    NOT NULL DEFAULT ''
+            )
+        """)
+        try:
+            con.execute("ALTER TABLE debts ADD COLUMN notes TEXT NOT NULL DEFAULT ''")
+        except Exception:
+            pass
+        con.execute("""
+            CREATE TABLE IF NOT EXISTS debt_balances (
+                id        INTEGER PRIMARY KEY AUTOINCREMENT,
+                debt_id   INTEGER NOT NULL,
+                month_key TEXT    NOT NULL,
+                balance   REAL    NOT NULL DEFAULT 0,
+                UNIQUE(debt_id, month_key)
+            )
+        """)
 
 
 # ── Bill Definitions CRUD ─────────────────────────────────────────────────────
@@ -328,3 +352,69 @@ def get_months_with_instances(db_path=DEFAULT_DB):
             "SELECT DISTINCT month_key FROM bill_instances ORDER BY month_key"
         ).fetchall()
     return [r[0] for r in rows]
+
+
+# ── Debt CRUD ─────────────────────────────────────────────────────────────────
+
+def load_debts(db_path=DEFAULT_DB):
+    with _conn(db_path) as con:
+        rows = con.execute(
+            "SELECT * FROM debts ORDER BY sort_order, id"
+        ).fetchall()
+    return [_row_to_dict(r) for r in rows]
+
+
+def insert_debt(debt, db_path=DEFAULT_DB):
+    with _conn(db_path) as con:
+        max_order = con.execute(
+            "SELECT COALESCE(MAX(sort_order), 0) FROM debts"
+        ).fetchone()[0]
+        cur = con.execute("""
+            INSERT INTO debts (sort_order, name, interest_rate, monthly_payment, payoff_date, notes)
+            VALUES (?, ?, ?, ?, ?, ?)
+        """, (
+            max_order + 1,
+            debt.get("name", ""),
+            debt.get("interest_rate", 0.0),
+            debt.get("monthly_payment", 0.0),
+            debt.get("payoff_date", ""),
+            debt.get("notes", ""),
+        ))
+        return cur.lastrowid
+
+
+def update_debt(debt_id, debt, db_path=DEFAULT_DB):
+    with _conn(db_path) as con:
+        con.execute("""
+            UPDATE debts SET name=?, interest_rate=?, monthly_payment=?, payoff_date=?, notes=?
+            WHERE id=?
+        """, (
+            debt.get("name", ""),
+            debt.get("interest_rate", 0.0),
+            debt.get("monthly_payment", 0.0),
+            debt.get("payoff_date", ""),
+            debt.get("notes", ""),
+            debt_id,
+        ))
+
+
+def delete_debt(debt_id, db_path=DEFAULT_DB):
+    with _conn(db_path) as con:
+        con.execute("DELETE FROM debt_balances WHERE debt_id=?", (debt_id,))
+        con.execute("DELETE FROM debts WHERE id=?", (debt_id,))
+
+
+def set_debt_balance(debt_id, month_key, balance, db_path=DEFAULT_DB):
+    with _conn(db_path) as con:
+        con.execute("""
+            INSERT OR REPLACE INTO debt_balances (debt_id, month_key, balance)
+            VALUES (?, ?, ?)
+        """, (debt_id, month_key, balance))
+
+
+def get_all_debt_balances(db_path=DEFAULT_DB):
+    with _conn(db_path) as con:
+        rows = con.execute(
+            "SELECT debt_id, month_key, balance FROM debt_balances ORDER BY month_key"
+        ).fetchall()
+    return [_row_to_dict(r) for r in rows]

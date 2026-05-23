@@ -77,6 +77,18 @@ DEF_COLUMNS = [
 ]
 DEF_LEFT_ALIGN = {"Description", "Frequency", "Due In", "Notes"}
 
+# ── Debt tab grid ─────────────────────────────────────────────────────────────
+DEBT_COLUMNS = [
+    ("Days Left",      80),
+    ("Payoff Date",   105),
+    ("Debt",          220),
+    ("Balance",        95),
+    ("Monthly Pmt",    95),
+    ("Rate",           65),
+    ("Notes",         200),
+]
+DEBT_LEFT_ALIGN = {"Debt", "Payoff Date"}
+
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -179,6 +191,36 @@ def _merge_defn_row(defn):
         str(defn.get("due_day", "")),
         _format_due_in(defn),
         defn.get("notes", ""),
+    )
+
+
+def _days_until_payoff(payoff_date_str):
+    if not payoff_date_str:
+        return "—"
+    try:
+        parts = payoff_date_str.split("/")
+        if len(parts) != 3:
+            return "—"
+        m, d, y = int(parts[0]), int(parts[1]), int(parts[2])
+        delta = (date(y, m, d) - date.today()).days
+        if delta < 0:
+            return "Paid"
+        if delta == 0:
+            return "Today"
+        return f"{delta:,}"
+    except Exception:
+        return "—"
+
+
+def _merge_debt_row(debt, balance):
+    return (
+        _days_until_payoff(debt.get("payoff_date", "")),
+        debt.get("payoff_date", "") or "N/A",
+        debt.get("name", ""),
+        _fmt(balance) if balance is not None else "—",
+        _fmt(debt.get("monthly_payment", 0)),
+        f"{debt.get('interest_rate', 0):.2f}%",
+        debt.get("notes", ""),
     )
 
 
@@ -883,6 +925,496 @@ class DefinitionsTab(ctk.CTkFrame):
                                self._app.refresh()))
 
 
+# ── Debt Tracker Tab ──────────────────────────────────────────────────────────
+
+class DebtTrackerTab(ctk.CTkFrame):
+    _CHART_COLORS = ["#f87171", "#60a5fa", "#4ade80", "#fbbf24", "#c084fc", "#fb923c", "#2dd4bf"]
+
+    def __init__(self, parent, app):
+        super().__init__(parent, fg_color="transparent", corner_radius=0)
+        self._app = app
+        self._selected_id = None
+        self._sort_col = None
+        self._sort_asc = True
+        self._chart_mode = "total"
+        self._debts = []
+        self._balances = []
+        self._latest_balance = {}
+        self._chart_btns = {}
+        self._build()
+
+    def _build(self):
+        # ── Summary card ──────────────────────────────────────────────
+        summary = ctk.CTkFrame(self, fg_color=C["card"], corner_radius=10,
+                               border_width=1, border_color=C["border"])
+        summary.pack(fill="x", padx=18, pady=(12, 6))
+        summary.grid_columnconfigure(0, weight=1)
+        summary.grid_columnconfigure(1, weight=0)
+        summary.grid_columnconfigure(2, weight=1)
+        summary.grid_columnconfigure(3, weight=0)
+        summary.grid_columnconfigure(4, weight=1)
+
+        ctk.CTkLabel(summary, text="Total Debt",
+                     font=ctk.CTkFont(size=12), text_color=C["muted"],
+                     anchor="w").grid(row=0, column=0, sticky="w", padx=(18, 8), pady=(10, 0))
+        self._lbl_total_debt = ctk.CTkLabel(summary, text="—",
+                     font=ctk.CTkFont(size=26, weight="bold"),
+                     text_color=C["red"], anchor="w")
+        self._lbl_total_debt.grid(row=1, column=0, sticky="w", padx=(18, 8), pady=(0, 10))
+
+        tk.Frame(summary, width=1, bg=C["border"]).grid(
+            row=0, column=1, rowspan=2, sticky="ns", pady=10)
+
+        ctk.CTkLabel(summary, text="Total Monthly Payments",
+                     font=ctk.CTkFont(size=12), text_color=C["muted"],
+                     anchor="w").grid(row=0, column=2, sticky="w", padx=(18, 8), pady=(10, 0))
+        self._lbl_total_pmt = ctk.CTkLabel(summary, text="—",
+                     font=ctk.CTkFont(size=26, weight="bold"),
+                     text_color=C["yellow"], anchor="w")
+        self._lbl_total_pmt.grid(row=1, column=2, sticky="w", padx=(18, 8), pady=(0, 10))
+
+        tk.Frame(summary, width=1, bg=C["border"]).grid(
+            row=0, column=3, rowspan=2, sticky="ns", pady=10)
+
+        ctk.CTkLabel(summary, text="Years Until Debt Free",
+                     font=ctk.CTkFont(size=12), text_color=C["muted"],
+                     anchor="w").grid(row=0, column=4, sticky="w", padx=(18, 8), pady=(10, 0))
+        self._lbl_total_years = ctk.CTkLabel(summary, text="—",
+                     font=ctk.CTkFont(size=26, weight="bold"),
+                     text_color=C["teal"], anchor="w")
+        self._lbl_total_years.grid(row=1, column=4, sticky="w", padx=(18, 8), pady=(0, 10))
+
+        # ── Toolbar ───────────────────────────────────────────────────
+        toolbar = ctk.CTkFrame(self, height=44, corner_radius=0, fg_color=C["card2"])
+        toolbar.pack(fill="x")
+        toolbar.pack_propagate(False)
+        for label, cmd, width in [
+            ("+ Add Debt", self._add,   110),
+            ("✎ Edit",     self._edit,   80),
+            ("🗑 Delete",   self._delete, 90),
+        ]:
+            ctk.CTkButton(toolbar, text=label, width=width, height=30,
+                          command=cmd).pack(side="left", padx=6, pady=7)
+
+        # ── Chart (packed bottom so table gets remaining space) ────────
+        chart_outer = ctk.CTkFrame(self, fg_color=C["card"], corner_radius=10,
+                                    border_width=1, border_color=C["border"])
+        chart_outer.pack(side="bottom", fill="x", padx=10, pady=(0, 10))
+
+        chart_hdr = ctk.CTkFrame(chart_outer, fg_color="transparent")
+        chart_hdr.pack(fill="x", padx=10, pady=(8, 0))
+        ctk.CTkLabel(chart_hdr, text="Debt Balance Trend",
+                     font=ctk.CTkFont(size=12, weight="bold"),
+                     text_color=C["heading"]).pack(side="left")
+        for val, label in [("per_debt", "Per Debt"), ("total", "Total")]:
+            btn = ctk.CTkButton(
+                chart_hdr, text=label, width=76, height=24,
+                fg_color=C["blue"] if val == "total" else C["border"],
+                hover_color=C["card2"],
+                command=lambda v=val: self._set_chart_mode(v))
+            btn.pack(side="right", padx=3)
+            self._chart_btns[val] = btn
+
+        self._canvas = tk.Canvas(chart_outer, bg=C["card"], highlightthickness=0, height=185)
+        self._canvas.pack(fill="x", padx=8, pady=(4, 8))
+        self._canvas.bind("<Configure>", self._repaint_chart)
+
+        # ── Table ─────────────────────────────────────────────────────
+        table_frame = tk.Frame(self, bg="#1a1a2e")
+        table_frame.pack(fill="both", expand=True)
+
+        style = ttk.Style()
+        style.configure("Debt.Treeview",
+                        background="#2b2b3b", foreground="#e0e0e0",
+                        fieldbackground="#2b2b3b", rowheight=26,
+                        font=("Consolas", 11))
+        style.configure("Debt.Treeview.Heading",
+                        background="#1f1f2e", foreground="#8ab4f8",
+                        font=("Helvetica", 11, "bold"), relief="flat")
+        style.map("Debt.Treeview",
+                  background=[("selected", "#3a5a8a")],
+                  foreground=[("selected", "#ffffff")])
+
+        vsb = ttk.Scrollbar(table_frame, orient="vertical")
+        vsb.pack(side="right", fill="y")
+        self._tree = ttk.Treeview(table_frame,
+                                   columns=[c[0] for c in DEBT_COLUMNS],
+                                   show="headings", style="Debt.Treeview",
+                                   yscrollcommand=vsb.set, selectmode="browse")
+        vsb.config(command=self._tree.yview)
+        self._tree.pack(fill="both", expand=True)
+
+        for col, width in DEBT_COLUMNS:
+            anchor = "w" if col in DEBT_LEFT_ALIGN else "e"
+            self._tree.heading(col, text=col,
+                               command=lambda c=col: self._sort_by(c))
+            self._tree.column(col, width=width, minwidth=40, anchor=anchor, stretch=False)
+
+        self._tree.bind("<<TreeviewSelect>>", self._on_select)
+        self._tree.bind("<Button-1>", self._on_click)
+
+    def refresh(self, debts, balances):
+        self._debts = debts
+        self._balances = balances
+        latest = {}
+        for b in sorted(balances, key=lambda x: x["month_key"]):
+            latest[b["debt_id"]] = b["balance"]
+        self._latest_balance = latest
+
+        total_debt = sum(latest.get(d["id"], 0) for d in debts)
+        total_pmt  = sum(d.get("monthly_payment", 0) for d in debts)
+        self._lbl_total_debt.configure(
+            text=_fmt(total_debt),
+            text_color=C["green"] if total_debt == 0 else C["red"])
+        self._lbl_total_pmt.configure(text=_fmt(total_pmt))
+
+        years_str = "—"
+        if debts:
+            max_payoff = None
+            valid = True
+            for d in debts:
+                pd = d.get("payoff_date", "")
+                if not pd:
+                    valid = False
+                    break
+                try:
+                    m, day, y = pd.split("/")
+                    max_payoff = max(max_payoff, date(int(y), int(m), int(day))) \
+                                 if max_payoff else date(int(y), int(m), int(day))
+                except Exception:
+                    valid = False
+                    break
+            if valid and max_payoff:
+                delta_days = (max_payoff - date.today()).days
+                years_str = f"{max(delta_days, 0) / 365.25:.1f}"
+            else:
+                years_str = "N/A"
+        self._lbl_total_years.configure(text=years_str)
+
+        self._tree.delete(*self._tree.get_children())
+        self._selected_id = None
+        for debt in debts:
+            self._tree.insert("", "end", iid=str(debt["id"]),
+                              values=_merge_debt_row(debt, latest.get(debt["id"])))
+        if self._sort_col:
+            self._apply_sort()
+        self._repaint_chart()
+
+    def _sort_by(self, col):
+        if self._sort_col == col:
+            self._sort_asc = not self._sort_asc
+        else:
+            self._sort_col = col
+            self._sort_asc = True
+        self._apply_sort()
+
+    def _apply_sort(self):
+        for col, _ in DEBT_COLUMNS:
+            self._tree.heading(col, text=col)
+        arrow = " ▲" if self._sort_asc else " ▼"
+        self._tree.heading(self._sort_col, text=self._sort_col + arrow)
+        items = [(self._tree.set(k, self._sort_col), k)
+                 for k in self._tree.get_children("")]
+        items.sort(key=lambda x: self._sort_key(self._sort_col, x[0]),
+                   reverse=not self._sort_asc)
+        for idx, (_, k) in enumerate(items):
+            self._tree.move(k, "", idx)
+
+    def _sort_key(self, col, val):
+        if col == "Days Left":
+            if val in ("—", "N/A", ""):
+                return 999999
+            if val == "Today":
+                return 0
+            if val == "Paid":
+                return -1
+            try:
+                return int(val.replace(",", ""))
+            except ValueError:
+                return 999999
+        if col in ("Balance", "Monthly Pmt"):
+            if val == "—":
+                return -1.0
+            try:
+                return float(val.replace("$", "").replace(",", ""))
+            except ValueError:
+                return -1.0
+        if col == "Rate":
+            try:
+                return float(val.replace("%", ""))
+            except ValueError:
+                return -1.0
+        if col == "Payoff Date":
+            if val in ("N/A", "—", ""):
+                return (9999, 99, 99)
+            try:
+                m, d, y = val.split("/")
+                return (int(y), int(m), int(d))
+            except Exception:
+                return (9999, 99, 99)
+        return val.lower()
+
+    def _repaint_chart(self, _=None):
+        self._canvas.delete("all")
+        w, h = self._canvas.winfo_width(), self._canvas.winfo_height()
+        if w < 20 or h < 20:
+            return
+        if not self._balances:
+            self._canvas.create_text(w // 2, h // 2,
+                text="Click a debt row to log your first balance entry",
+                fill=C["muted"], font=("Helvetica", 11))
+            return
+
+        pad_l, pad_r, pad_t, pad_b = 76, 16, 12, 28
+        cw = w - pad_l - pad_r
+        ch = h - pad_t - pad_b
+
+        months = sorted({b["month_key"] for b in self._balances})
+        nm = len(months)
+
+        def xp(i):
+            return pad_l + (i / max(nm - 1, 1)) * cw
+
+        def yp(v, lo, hi):
+            return pad_t + (1.0 - (v - lo) / (hi - lo or 1)) * ch
+
+        # Axes
+        self._canvas.create_line(pad_l, pad_t, pad_l, h - pad_b,
+                                  fill=C["border"], width=1)
+        self._canvas.create_line(pad_l, h - pad_b, w - pad_r, h - pad_b,
+                                  fill=C["border"], width=1)
+
+        # X labels
+        for i, m in enumerate(months):
+            if nm <= 8 or i % max(1, nm // 8) == 0 or i == nm - 1:
+                yr, mo = m.split("-")
+                self._canvas.create_text(
+                    xp(i), h - pad_b + 4,
+                    text=f"{MONTH_NAMES[int(mo)-1]} '{yr[2:]}",
+                    anchor="n", fill=C["muted"], font=("Helvetica", 8))
+
+        if self._chart_mode == "total":
+            totals = {}
+            for b in self._balances:
+                totals[b["month_key"]] = totals.get(b["month_key"], 0) + b["balance"]
+            vals = [totals.get(m, 0) for m in months]
+            lo, hi = min(vals), max(vals)
+            self._canvas.create_text(pad_l - 4, pad_t, text=_fmt(hi),
+                anchor="e", fill=C["muted"], font=("Helvetica", 9))
+            self._canvas.create_text(pad_l - 4, h - pad_b, text=_fmt(lo),
+                anchor="e", fill=C["muted"], font=("Helvetica", 9))
+            pts = [(xp(i), yp(v, lo, hi)) for i, v in enumerate(vals)]
+            for i in range(len(pts) - 1):
+                x0, y0 = pts[i]; x1, y1 = pts[i + 1]
+                self._canvas.create_line(x0, y0, x1, y1, fill=C["red"], width=2)
+            for x, y in pts:
+                self._canvas.create_oval(x - 3, y - 3, x + 3, y + 3,
+                                          fill=C["red"], outline="")
+        else:
+            by_debt = {}
+            for b in self._balances:
+                by_debt.setdefault(b["debt_id"], {})[b["month_key"]] = b["balance"]
+            all_v = [b["balance"] for b in self._balances]
+            lo, hi = min(all_v), max(all_v)
+            self._canvas.create_text(pad_l - 4, pad_t, text=_fmt(hi),
+                anchor="e", fill=C["muted"], font=("Helvetica", 9))
+            self._canvas.create_text(pad_l - 4, h - pad_b, text=_fmt(lo),
+                anchor="e", fill=C["muted"], font=("Helvetica", 9))
+            for ci, (debt_id, mdata) in enumerate(by_debt.items()):
+                color = self._CHART_COLORS[ci % len(self._CHART_COLORS)]
+                debt_months = [m for m in months if m in mdata]
+                if not debt_months:
+                    continue
+                pts = [(xp(months.index(m)), yp(mdata[m], lo, hi)) for m in debt_months]
+                for i in range(len(pts) - 1):
+                    x0, y0 = pts[i]; x1, y1 = pts[i + 1]
+                    self._canvas.create_line(x0, y0, x1, y1, fill=color, width=2)
+                for x, y in pts:
+                    self._canvas.create_oval(x - 3, y - 3, x + 3, y + 3,
+                                              fill=color, outline="")
+                name = next((d["name"] for d in self._debts if d["id"] == debt_id), "")
+                if name and pts:
+                    lx, ly = pts[-1]
+                    self._canvas.create_text(lx + 6, ly, text=name[:15],
+                        anchor="w", fill=color, font=("Helvetica", 8))
+
+    def _set_chart_mode(self, mode):
+        self._chart_mode = mode
+        for val, btn in self._chart_btns.items():
+            btn.configure(fg_color=C["blue"] if val == mode else C["border"])
+        self._repaint_chart()
+
+    def _on_select(self, _=None):
+        sel = self._tree.selection()
+        self._selected_id = int(sel[0]) if sel else None
+
+    def _on_click(self, event):
+        item = self._tree.identify_row(event.y)
+        if not item:
+            return
+        debt_id = int(item)
+        self._selected_id = debt_id
+        debt = next((d for d in self._debts if d["id"] == debt_id), None)
+        if debt:
+            bal = self._latest_balance.get(debt_id)
+            BalanceDialog(self, self._app, debt, bal)
+
+    def _add(self):
+        DebtDialog(self, self._app, mode="add")
+
+    def _edit(self):
+        if not self._selected_id:
+            self._app.flash("Select a debt to edit.")
+            return
+        debt = next((d for d in self._debts if d["id"] == self._selected_id), None)
+        if debt:
+            DebtDialog(self, self._app, mode="edit", debt=debt)
+
+    def _delete(self):
+        if not self._selected_id:
+            self._app.flash("Select a debt to delete.")
+            return
+        ConfirmDialog(self, self._app,
+                      "Delete this debt and all balance history?\nThis cannot be undone.",
+                      lambda: (db.delete_debt(self._selected_id, DB_PATH),
+                               self._app.refresh()))
+
+
+# ── Balance Update Dialog ─────────────────────────────────────────────────────
+
+class BalanceDialog(ctk.CTkToplevel):
+    def __init__(self, parent, app, debt, current_balance=None):
+        super().__init__(parent)
+        self._app = app
+        self._debt = debt
+        today = date.today()
+        self._month_key = f"{today.year:04d}-{today.month:02d}"
+
+        self.title("Update Balance")
+        self.geometry("370x205")
+        self.resizable(False, False)
+        self.after(100, self.grab_set)
+        self.after(100, self.focus_set)
+
+        ctk.CTkLabel(self, text=debt["name"],
+                     font=ctk.CTkFont(size=15, weight="bold")).pack(
+            padx=16, pady=(14, 2), anchor="w")
+        ctk.CTkLabel(self, text=f"Balance for {_month_label(self._month_key)}",
+                     font=ctk.CTkFont(size=11), text_color=C["muted"]).pack(
+            padx=16, anchor="w")
+
+        row = ctk.CTkFrame(self, fg_color="transparent")
+        row.pack(fill="x", padx=16, pady=14)
+        ctk.CTkLabel(row, text="Current Balance:", width=140, anchor="w").pack(side="left")
+        default_val = f"{current_balance:.2f}" if current_balance is not None else ""
+        self._bal_var = tk.StringVar(value=default_val)
+        entry = ctk.CTkEntry(row, textvariable=self._bal_var, width=160)
+        entry.pack(side="left")
+        entry.select_range(0, "end")
+        entry.focus_set()
+
+        self._err = ctk.CTkLabel(self, text="", text_color=C["red"],
+                                 font=ctk.CTkFont(size=11))
+        self._err.pack(padx=16, anchor="w")
+
+        btn_row = ctk.CTkFrame(self, fg_color="transparent")
+        btn_row.pack(fill="x", padx=16, pady=10, side="bottom")
+        ctk.CTkButton(btn_row, text="Save", width=100,
+                      command=self._save).pack(side="right", padx=(8, 0))
+        ctk.CTkButton(btn_row, text="Cancel", width=90,
+                      fg_color="transparent", border_width=1,
+                      command=self.destroy).pack(side="right")
+        self.bind("<Return>", lambda _: self._save())
+
+    def _save(self):
+        try:
+            balance = float(self._bal_var.get().replace("$", "").replace(",", ""))
+        except ValueError:
+            self._err.configure(text="Balance must be a number.")
+            return
+        db.set_debt_balance(self._debt["id"], self._month_key, balance, DB_PATH)
+        self.destroy()
+        self._app.refresh()
+
+
+# ── Debt Add/Edit Dialog ──────────────────────────────────────────────────────
+
+class DebtDialog(ctk.CTkToplevel):
+    def __init__(self, parent, app, mode, debt=None):
+        super().__init__(parent)
+        self._app = app
+        self._mode = mode
+        self._debt = debt
+
+        title = "Add Debt" if mode == "add" else "Edit Debt"
+        self.title(title)
+        self.geometry("420x410")
+        self.resizable(False, False)
+        self.after(100, self.grab_set)
+        self.after(100, self.focus_set)
+
+        ctk.CTkLabel(self, text=title,
+                     font=ctk.CTkFont(size=16, weight="bold")).pack(
+            padx=16, pady=(14, 6), anchor="w")
+
+        self._vars = {}
+        fields = [
+            ("Name",            debt["name"]                     if debt else "",  ""),
+            ("Interest Rate %", str(debt["interest_rate"])       if debt else "",  "e.g. 14.99"),
+            ("Monthly Pmt",     str(debt["monthly_payment"])     if debt else "",  "e.g. 281.43"),
+            ("Payoff Date",     debt["payoff_date"]              if debt else "",  "MM/DD/YYYY — leave blank for N/A"),
+            ("Notes",           debt.get("notes", "")            if debt else "",  ""),
+        ]
+        for label, default, hint in fields:
+            row = ctk.CTkFrame(self, fg_color="transparent")
+            row.pack(fill="x", padx=16, pady=(5, 0))
+            ctk.CTkLabel(row, text=label, width=130, anchor="w").pack(side="left")
+            var = tk.StringVar(value=default)
+            ctk.CTkEntry(row, textvariable=var, width=230).pack(side="left")
+            self._vars[label] = var
+            if hint:
+                ctk.CTkLabel(self, text=hint, font=ctk.CTkFont(size=10),
+                             text_color=C["muted"]).pack(padx=16, anchor="w")
+
+        self._err = ctk.CTkLabel(self, text="", text_color=C["red"],
+                                 font=ctk.CTkFont(size=11))
+        self._err.pack(padx=16, anchor="w", pady=(6, 0))
+
+        btn_row = ctk.CTkFrame(self, fg_color="transparent")
+        btn_row.pack(fill="x", padx=16, pady=10, side="bottom")
+        ctk.CTkButton(btn_row, text="Save", width=120,
+                      command=self._save).pack(side="right", padx=(8, 0))
+        ctk.CTkButton(btn_row, text="Cancel", width=100,
+                      fg_color="transparent", border_width=1,
+                      command=self.destroy).pack(side="right")
+
+    def _save(self):
+        name = self._vars["Name"].get().strip()
+        if not name:
+            self._err.configure(text="Name is required.")
+            return
+        try:
+            rate = float(self._vars["Interest Rate %"].get().replace("%", "").strip())
+        except ValueError:
+            self._err.configure(text="Interest rate must be a number.")
+            return
+        try:
+            pmt = float(self._vars["Monthly Pmt"].get().replace("$", "").replace(",", "").strip())
+        except ValueError:
+            self._err.configure(text="Monthly payment must be a number.")
+            return
+        payoff = self._vars["Payoff Date"].get().strip()
+        notes  = self._vars["Notes"].get().strip()
+        data = {"name": name, "interest_rate": rate,
+                "monthly_payment": pmt, "payoff_date": payoff, "notes": notes}
+        if self._mode == "add":
+            db.insert_debt(data, DB_PATH)
+        else:
+            db.update_debt(self._debt["id"], data, DB_PATH)
+        self.destroy()
+        self._app.refresh()
+
+
 # ── Bill Instance Dialog ──────────────────────────────────────────────────────
 
 class InstDialog(ctk.CTkToplevel):
@@ -1297,7 +1829,7 @@ class MoneyTrackerApp(ctk.CTk):
         tab_group.grid(row=0, column=1, pady=10)
         ctk.CTkLabel(header, text="💰",
                      font=ctk.CTkFont(size=36)).grid(row=0, column=2, sticky="e", padx=18, pady=8)
-        for name in ("Dashboard", "Definitions"):
+        for name in ("Dashboard", "Definitions", "Debt"):
             btn = ctk.CTkButton(
                 tab_group, text=name, width=130, height=30,
                 corner_radius=6,
@@ -1325,6 +1857,7 @@ class MoneyTrackerApp(ctk.CTk):
         self._dashboard.pack(fill="both", expand=True)
 
         self._defs = DefinitionsTab(content, self)
+        self._debt_tab = DebtTrackerTab(content, self)
 
         self._active_tab = "Dashboard"
         self._update_tab_btn_styles()
@@ -1333,12 +1866,15 @@ class MoneyTrackerApp(ctk.CTk):
         if name == self._active_tab:
             return
         self._active_tab = name
+        self._dashboard.pack_forget()
+        self._defs.pack_forget()
+        self._debt_tab.pack_forget()
         if name == "Dashboard":
-            self._defs.pack_forget()
             self._dashboard.pack(fill="both", expand=True)
-        else:
-            self._dashboard.pack_forget()
+        elif name == "Definitions":
             self._defs.pack(fill="both", expand=True)
+        else:
+            self._debt_tab.pack(fill="both", expand=True)
         self._update_tab_btn_styles()
 
     def _update_tab_btn_styles(self):
@@ -1351,8 +1887,11 @@ class MoneyTrackerApp(ctk.CTk):
     def refresh(self):
         annotated, summary = _load_and_annotate(self._current_month)
         definitions        = db.load_definitions(DB_PATH)
+        debts              = db.load_debts(DB_PATH)
+        balances           = db.get_all_debt_balances(DB_PATH)
         self._dashboard.refresh(annotated, summary, self._current_month)
         self._defs.refresh(definitions)
+        self._debt_tab.refresh(debts, balances)
         self._update_status(annotated, summary)
 
     def _update_status(self, annotated, summary):

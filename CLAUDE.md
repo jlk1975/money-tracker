@@ -72,8 +72,8 @@ python3 wipe.py    # interactive: wipe instances only, or everything
 
 **`account_settings`** — single-row table (id=1) for the checking account
 - `account_name`, `starting_balance` (REAL), `as_of_date` (MM/DD/YYYY)
-- `buffer` (REAL, default 0.0) — dollar amount always subtracted from Safe2Spend
 - Read/written via `db.get_account_settings()` / `db.set_account_settings()`
+- Note: `buffer` column exists in DB from a prior migration but is no longer used — Safe2Spend has no buffer
 
 ## Key concepts
 
@@ -86,8 +86,8 @@ python3 wipe.py    # interactive: wipe instances only, or everything
 - **`calculate_summary()`** returns `total_due`, `total_paid`, `bill_count`
 - **`funded_through_parts(instances, month_key)`** returns `(days_str, caption_str)` — consecutive funded-through date for unpaid bills from today
 - **Funded workflow**: bills must be funded before soft pay or paid; a bill is marked Paid only by being linked to a register transaction (Link-to-Bill auto-funds + auto-pays in one step)
-- **Safe2Spend** = `bank_balance` (most recent transaction's bank_balance) − `buffer` − `funded_not_yet_paid` (sum of amounts for funded+Due instances across all months); shown on both Register and Dashboard nav bars; can be negative (shown red)
-  - Changes when: CSV imported (bank_balance updates), buffer edited, or bills funded/unfunded on Dashboard
+- **Safe2Spend** = `bank_balance` (most recent transaction's bank_balance) − `funded_not_yet_paid` (sum of amounts for funded+Due instances across all months); shown on both Register and Dashboard nav bars; can be negative (shown red)
+  - Changes when: CSV imported (bank_balance updates), or bills funded/unfunded on Dashboard
   - Does NOT change when linking a transaction to an unfunded bill — the bank_balance already reflects the payment at import time; linking is bookkeeping only
 - **Funding enforcement**: `Mark Funded` and `All Funded` check Safe2Spend before writing; blocked with flash message if insufficient; $0 bills skip the check
 - **Tab switching**: no CTkTabview — manual frame-swap via `_switch_tab()`; "Dashboard" / "Definitions" / "Debt" / "Register" buttons centered in header; active tab highlighted in blue, inactive in `C["card2"]`
@@ -119,7 +119,7 @@ python3 wipe.py    # interactive: wipe instances only, or everything
 ## Register tab (`RegisterTab`)
 
 - Stored as `self._reg_tab` on `MoneyTrackerApp`
-- **Account info bar**: Account Name | Balance | Buffer [entry] [Set] | Safe2Spend | Buffer display | Cumulative Txns | Showing Txns | Last Import | ⚙ Account Settings
+- **Account info bar**: Account Name | Balance | Safe2Spend | Cumulative Txns | Showing Txns | Last Import | ⚙ Account Settings
   - `Cumulative Txns`: total row count in `register_transactions`
   - `Showing Txns`: count of rows currently visible after all filters; updates live
   - `Last Import`: "Last Import: N new" — set after each CSV import, blank until first import

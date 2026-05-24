@@ -535,19 +535,18 @@ def get_account_settings(db_path=DEFAULT_DB):
         row = con.execute("SELECT * FROM account_settings WHERE id=1").fetchone()
     if row:
         return _row_to_dict(row)
-    return {"account_name": "", "starting_balance": 0.0, "as_of_date": "", "buffer": 0.0}
+    return {"account_name": "", "starting_balance": 0.0, "as_of_date": ""}
 
 
 def set_account_settings(settings, db_path=DEFAULT_DB):
     with _conn(db_path) as con:
         con.execute("""
-            INSERT OR REPLACE INTO account_settings (id, account_name, starting_balance, as_of_date, buffer)
-            VALUES (1, ?, ?, ?, ?)
+            INSERT OR REPLACE INTO account_settings (id, account_name, starting_balance, as_of_date)
+            VALUES (1, ?, ?, ?)
         """, (
             settings.get("account_name", ""),
             settings.get("starting_balance", 0.0),
             settings.get("as_of_date", ""),
-            settings.get("buffer", 0.0),
         ))
 
 
@@ -653,10 +652,8 @@ def get_funded_not_paid_total(db_path=DEFAULT_DB):
 
 
 def get_safe2spend(db_path=DEFAULT_DB):
-    """Compute Safe2Spend = current_balance - buffer - funded_not_yet_paid."""
+    """Compute Safe2Spend = current_balance - funded_not_yet_paid."""
     with _conn(db_path) as con:
-        s = con.execute("SELECT * FROM account_settings WHERE id=1").fetchone()
-        buf = _row_to_dict(s).get("buffer", 0.0) if s else 0.0
         row = con.execute("""
             SELECT bank_balance FROM register_transactions
             WHERE bank_balance IS NOT NULL
@@ -671,7 +668,7 @@ def get_safe2spend(db_path=DEFAULT_DB):
             "SELECT COALESCE(SUM(amount), 0) FROM bill_instances "
             "WHERE funded=1 AND status='Due' AND deleted=0"
         ).fetchone()[0] or 0.0
-    return balance - buf - funded_not_paid
+    return balance - funded_not_paid
 
 
 def delete_all_transactions(db_path=DEFAULT_DB):

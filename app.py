@@ -1437,8 +1437,7 @@ class RegisterTab(ctk.CTkFrame):
         self._sort_col = "Date"
         self._sort_asc = True
         self._transactions = []
-        self._acct_settings = {"account_name": "", "starting_balance": 0.0,
-                               "as_of_date": "", "buffer": 0.0}
+        self._acct_settings = {"account_name": "", "starting_balance": 0.0, "as_of_date": ""}
         self._link_filter = "all"
         self._link_filter_btns = {}
         self._review_filter = "all"
@@ -1465,26 +1464,10 @@ class RegisterTab(ctk.CTkFrame):
             font=ctk.CTkFont(size=13), text_color=C["green"])
         self._balance_label.pack(side="left", padx=16)
 
-        buf_frame = ctk.CTkFrame(info_bar, fg_color="transparent")
-        buf_frame.pack(side="left", padx=4)
-        ctk.CTkLabel(buf_frame, text="Buffer:",
-                     font=ctk.CTkFont(size=12), text_color=C["muted"]).pack(side="left")
-        self._buf_var = tk.StringVar()
-        buf_entry = ctk.CTkEntry(buf_frame, textvariable=self._buf_var, width=82, height=28)
-        buf_entry.pack(side="left", padx=(4, 0))
-        buf_entry._entry.bind("<Return>", self._save_buffer)
-        ctk.CTkButton(buf_frame, text="Set", width=36, height=28,
-                      command=self._save_buffer).pack(side="left", padx=(4, 0))
-
         self._safe2spend_label = ctk.CTkLabel(
             info_bar, text="Safe2Spend: —",
             font=ctk.CTkFont(size=13), text_color=C["green"])
         self._safe2spend_label.pack(side="left", padx=16)
-
-        self._buffer_display_label = ctk.CTkLabel(
-            info_bar, text="Buffer: $0.00",
-            font=ctk.CTkFont(size=13), text_color=C["muted"])
-        self._buffer_display_label.pack(side="left", padx=0)
 
         self._txn_count_label = ctk.CTkLabel(
             info_bar, text="",
@@ -1618,9 +1601,6 @@ class RegisterTab(ctk.CTkFrame):
         name = acct_settings.get("account_name", "").strip()
         self._acct_name_label.configure(text=name if name else "No account configured")
 
-        buf = acct_settings.get("buffer", 0.0)
-        self._buf_var.set(f"{buf:.2f}")
-
         self._current_balance = self._latest_bank_balance(transactions)
         bal_color = C["green"] if self._current_balance >= 0 else C["red"]
         bal_str = (f"${self._current_balance:,.2f}"
@@ -1629,11 +1609,10 @@ class RegisterTab(ctk.CTkFrame):
         self._balance_label.configure(text=f"Balance: {bal_str}", text_color=bal_color)
 
         funded_not_paid = db.get_funded_not_paid_total(DB_PATH)
-        s2s = self._current_balance - buf - funded_not_paid
+        s2s = self._current_balance - funded_not_paid
         s2s_color = C["green"] if s2s >= 0 else C["red"]
         s2s_str = f"${s2s:,.2f}" if s2s >= 0 else f"-${abs(s2s):,.2f}"
         self._safe2spend_label.configure(text=f"Safe2Spend: {s2s_str}", text_color=s2s_color)
-        self._buffer_display_label.configure(text=f"  Buffer: ${buf:,.2f}")
 
         txn_count = db.get_transaction_count(DB_PATH)
         self._txn_count_label.configure(text=f"Cumulative Txns: {txn_count:,}")
@@ -1763,18 +1742,6 @@ class RegisterTab(ctk.CTkFrame):
     def _on_select(self, _=None):
         sel = self._tree.selection()
         self._selected_id = int(sel[0]) if sel else None
-
-    def _save_buffer(self, _=None):
-        try:
-            buf = abs(float(self._buf_var.get().replace("$", "").replace(",", "")))
-        except ValueError:
-            buf = 0.0
-        if buf == self._acct_settings.get("buffer", 0.0):
-            return
-        settings = dict(self._acct_settings)
-        settings["buffer"] = buf
-        db.set_account_settings(settings, DB_PATH)
-        self._app.refresh()
 
     def _import_csv(self):
         path = filedialog.askopenfilename(
@@ -2569,7 +2536,6 @@ class AccountSettingsDialog(ctk.CTkToplevel):
             "account_name":     name,
             "starting_balance": 0.0,
             "as_of_date":       "",
-            "buffer":           self._current_settings.get("buffer", 0.0),
         }, DB_PATH)
         self.destroy()
         self._app.refresh()

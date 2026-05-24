@@ -619,12 +619,6 @@ class CombinedDashboard(ctk.CTkFrame):
         self._right_btn.configure(
             state="normal" if self._app.can_navigate_right() else "disabled")
 
-        month_total  = summary["total_due"] + summary["total_paid"]
-        paid_count   = sum(1 for b in annotated if b.get("status") == "Paid")
-        unpaid_count = sum(1 for b in annotated if b.get("status") != "Paid")
-        self._month_total_lbl.configure(
-            text=f"{summary['bill_count']} bills  ·  ${month_total:,.2f}  ·  ✓ {paid_count}  ·  ○ {unpaid_count}")
-
         s2s = db.get_safe2spend(DB_PATH)
         s2s_color = C["green"] if s2s >= 0 else C["red"]
         s2s_str = f"${s2s:,.2f}" if s2s >= 0 else f"-${abs(s2s):,.2f}"
@@ -649,6 +643,12 @@ class CombinedDashboard(ctk.CTkFrame):
             summary = calc.calculate_summary(display)
         else:
             display = annotated
+
+        month_total  = summary["total_due"] + summary["total_paid"]
+        paid_count   = sum(1 for b in display if b.get("status") == "Paid")
+        unpaid_count = sum(1 for b in display if b.get("status") != "Paid")
+        self._month_total_lbl.configure(
+            text=f"{summary['bill_count']} bills  ·  ${month_total:,.2f}  ·  ✓ {paid_count}  ·  ○ {unpaid_count}")
 
         for w in self._metrics_panel.winfo_children():
             w.destroy()

@@ -394,7 +394,7 @@ class CombinedDashboard(ctk.CTkFrame):
 
         for _emoji, _label, _color in [("🌟", "Good", C["green"]), ("🤷", "Meh", C["blue"]), ("💔", "Regret", C["red"])]:
             _btn = ctk.CTkButton(
-                self._nav_bar, text=f"{_emoji} {_label}", width=84, height=28,
+                self._nav_bar, text=_emoji, width=36, height=28,
                 fg_color=C["border"], hover_color=C["card2"],
                 font=ctk.CTkFont(size=12),
                 command=lambda e=_emoji: self._toggle_vibe_filter(e),

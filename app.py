@@ -3207,13 +3207,14 @@ class MoneyTrackerApp(ctk.CTk):
         self.after(duration_ms, lambda: self._status_var.set(old))
 
     def _backup_db(self):
-        import shutil
+        import tarfile
         desktop = os.path.expanduser("~/Desktop")
         ts = date.today().strftime("%Y-%m-%d")
-        dest = os.path.join(desktop, f"money-tracker-backup-{ts}.db")
+        dest = os.path.join(desktop, f"money-tracker-backup-{ts}.tar.gz")
         try:
-            shutil.copy2(DB_PATH, dest)
-            self.flash(f"Backup saved to ~/Desktop/money-tracker-backup-{ts}.db")
+            with tarfile.open(dest, "w:gz") as tar:
+                tar.add(DB_PATH, arcname=f"money-tracker-backup-{ts}.db")
+            self.flash(f"Backup saved to ~/Desktop/money-tracker-backup-{ts}.tar.gz")
         except Exception as e:
             self.flash(f"Backup failed: {e}")
 

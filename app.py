@@ -1903,7 +1903,11 @@ class RegisterTab(ctk.CTkFrame):
             new_count += 1
         self._last_import_msg = f"Last Import: {new_count} new"
         self._app.refresh()
-        self._app.flash(f"Imported {new_count} transactions ({dup_count} duplicates skipped)")
+        s2s = db.get_safe2spend(DB_PATH)
+        msg = f"Imported {new_count} transactions ({dup_count} duplicates skipped)"
+        if s2s < 0:
+            msg += f"  ⚠ Safe2Spend is now {_fmt(s2s)} — consider unfunding some bills"
+        self._app.flash(msg)
 
     def _link_to_bill(self):
         if not self._selected_id:
@@ -3058,14 +3062,16 @@ class MoneyTrackerApp(ctk.CTk):
         header.columnconfigure(2, weight=1)
 
         _left = ctk.CTkFrame(header, fg_color="transparent")
-        _left.grid(row=0, column=0, sticky="w", padx=10, pady=4)
-        ctk.CTkLabel(_left, text="💰", font=ctk.CTkFont(size=36)).pack(side="left", padx=(8, 10))
+        _left.grid(row=0, column=0, sticky="ew", padx=10, pady=4)
+        _left.columnconfigure(0, weight=0)
+        _left.columnconfigure(1, weight=1)
+        ctk.CTkLabel(_left, text="💰", font=ctk.CTkFont(size=36)).grid(row=0, column=0, padx=(8, 0))
         self._header_s2s_label = ctk.CTkLabel(
             _left, text="Safe2Spend: —",
             font=ctk.CTkFont(size=22, weight="bold"),
             text_color=C["green"],
         )
-        self._header_s2s_label.pack(side="left")
+        self._header_s2s_label.grid(row=0, column=1)
 
         self._tab_btns = {}
         tab_group = ctk.CTkFrame(header, fg_color="transparent")

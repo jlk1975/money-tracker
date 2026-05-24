@@ -3109,7 +3109,7 @@ class MoneyTrackerApp(ctk.CTk):
         ).pack(side="left", padx=(12, 0))
 
         ctk.CTkButton(
-            tab_group, text="📂", width=36, height=30,
+            tab_group, text="⬇", width=36, height=30,
             corner_radius=6,
             fg_color=C["border"], hover_color=C["card2"],
             font=ctk.CTkFont(size=16),

@@ -1693,7 +1693,11 @@ class RegisterTab(ctk.CTkFrame):
             self._populate_tree()
 
     def _reg_set_all(self):
-        self._reg_month = None
+        if self._reg_month is None:
+            today = date.today()
+            self._reg_month = f"{today.year:04d}-{today.month:02d}"
+        else:
+            self._reg_month = None
         self._update_reg_nav()
         self._populate_tree()
 

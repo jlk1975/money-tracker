@@ -575,7 +575,7 @@ class CombinedDashboard(ctk.CTkFrame):
             state="normal" if self._app.can_navigate_right() else "disabled")
 
         month_total = summary["total_due"] + summary["total_paid"]
-        self._month_total_lbl.configure(text=f"Bills This Month:  ${month_total:,.2f}")
+        self._month_total_lbl.configure(text=f"{summary['bill_count']} Bills In {calendar.month_name[month]}:  ${month_total:,.2f}")
 
         if self._vibe_filter:
             display = [b for b in annotated
@@ -2330,7 +2330,7 @@ class MoneyTrackerApp(ctk.CTk):
         tab_group.grid(row=0, column=1, pady=10)
         ctk.CTkLabel(header, text="💰",
                      font=ctk.CTkFont(size=36)).grid(row=0, column=2, sticky="e", padx=18, pady=8)
-        for name in ("Dashboard", "Definitions", "Debt", "Register"):
+        for name in ("Bills", "Bill List", "Debt", "Register"):
             btn = ctk.CTkButton(
                 tab_group, text=name, width=130, height=30,
                 corner_radius=6,
@@ -2361,7 +2361,7 @@ class MoneyTrackerApp(ctk.CTk):
         self._debt_tab  = DebtTrackerTab(content, self)
         self._reg_tab  = RegisterTab(content, self)
 
-        self._active_tab = "Dashboard"
+        self._active_tab = "Bills"
         self._update_tab_btn_styles()
 
     def _switch_tab(self, name):
@@ -2372,9 +2372,9 @@ class MoneyTrackerApp(ctk.CTk):
         self._defs.pack_forget()
         self._debt_tab.pack_forget()
         self._reg_tab.pack_forget()
-        if name == "Dashboard":
+        if name == "Bills":
             self._dashboard.pack(fill="both", expand=True)
-        elif name == "Definitions":
+        elif name == "Bill List":
             self._defs.pack(fill="both", expand=True)
         elif name == "Debt":
             self._debt_tab.pack(fill="both", expand=True)

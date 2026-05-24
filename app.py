@@ -619,6 +619,7 @@ class CombinedDashboard(ctk.CTkFrame):
         s2s_color = C["green"] if s2s >= 0 else C["red"]
         s2s_str = f"${s2s:,.2f}" if s2s >= 0 else f"-${abs(s2s):,.2f}"
         self._dash_s2s_label.configure(text=f"Safe2Spend: {s2s_str}", text_color=s2s_color)
+        self._app._header_s2s_label.configure(text=f"Safe2Spend: {s2s_str}", text_color=s2s_color)
 
         _paid  = summary.get("total_paid", 0)
         _total = _paid + summary.get("total_due", 0)
@@ -1704,6 +1705,7 @@ class RegisterTab(ctk.CTkFrame):
         s2s_color = C["green"] if s2s >= 0 else C["red"]
         s2s_str = f"${s2s:,.2f}" if s2s >= 0 else f"-${abs(s2s):,.2f}"
         self._safe2spend_label.configure(text=f"Safe2Spend: {s2s_str}", text_color=s2s_color)
+        self._app._header_s2s_label.configure(text=f"Safe2Spend: {s2s_str}", text_color=s2s_color)
 
         txn_count = db.get_transaction_count(DB_PATH)
         self._txn_count_label.configure(text=f"Cumulative Txns: {txn_count:,}")
@@ -3055,8 +3057,15 @@ class MoneyTrackerApp(ctk.CTk):
         header.columnconfigure(1, weight=0)
         header.columnconfigure(2, weight=1)
 
-        ctk.CTkLabel(header, text="💰",
-                     font=ctk.CTkFont(size=36)).grid(row=0, column=0, sticky="w", padx=18, pady=8)
+        _left = ctk.CTkFrame(header, fg_color="transparent")
+        _left.grid(row=0, column=0, sticky="w", padx=10, pady=4)
+        ctk.CTkLabel(_left, text="💰", font=ctk.CTkFont(size=36)).pack(side="left", padx=(8, 10))
+        self._header_s2s_label = ctk.CTkLabel(
+            _left, text="Safe2Spend: —",
+            font=ctk.CTkFont(size=22, weight="bold"),
+            text_color=C["green"],
+        )
+        self._header_s2s_label.pack(side="left")
 
         self._tab_btns = {}
         tab_group = ctk.CTkFrame(header, fg_color="transparent")

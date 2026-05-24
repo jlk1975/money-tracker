@@ -2631,7 +2631,7 @@ class AccountSettingsDialog(ctk.CTkToplevel):
         self._current_settings = current_settings
 
         self.title("Account Settings")
-        self.geometry("380x150")
+        self.geometry("380x170")
         self.resizable(False, False)
         self.after(100, self.grab_set)
         self.after(100, self.focus_set)
@@ -2654,9 +2654,9 @@ class AccountSettingsDialog(ctk.CTkToplevel):
 
         btn_row = ctk.CTkFrame(self, fg_color="transparent")
         btn_row.pack(fill="x", padx=16, pady=12, side="bottom")
-        ctk.CTkButton(btn_row, text="Save", width=120,
+        ctk.CTkButton(btn_row, text="Save", width=120, height=36,
                       command=self._save).pack(side="right", padx=(8, 0))
-        ctk.CTkButton(btn_row, text="Cancel", width=100,
+        ctk.CTkButton(btn_row, text="Cancel", width=100, height=36,
                       fg_color="transparent", border_width=1,
                       command=self.destroy).pack(side="right")
 

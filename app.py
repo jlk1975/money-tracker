@@ -3106,7 +3106,15 @@ class MoneyTrackerApp(ctk.CTk):
             fg_color=C["border"], hover_color=C["card2"],
             font=ctk.CTkFont(size=16),
             command=self._backup_db,
-        ).pack(side="left", padx=(12, 4))
+        ).pack(side="left", padx=(12, 0))
+
+        ctk.CTkButton(
+            tab_group, text="📂", width=36, height=30,
+            corner_radius=6,
+            fg_color=C["border"], hover_color=C["card2"],
+            font=ctk.CTkFont(size=16),
+            command=self._restore_db,
+        ).pack(side="left", padx=(4, 4))
 
         self._status_var = tk.StringVar(value="Loading…")
         status_bar = ctk.CTkFrame(self, height=26, corner_radius=0,
@@ -3217,6 +3225,47 @@ class MoneyTrackerApp(ctk.CTk):
             self.flash(f"Backup saved to ~/Desktop/money-tracker-backup-{ts}.tar.gz")
         except Exception as e:
             self.flash(f"Backup failed: {e}")
+
+    def _restore_db(self):
+        import tarfile
+        import tempfile
+        import tkinter.messagebox as mb
+        import tkinter.filedialog as fd
+
+        confirmed = mb.askyesno(
+            "Restore Database",
+            "WARNING: This will permanently replace your entire current database "
+            "with the selected backup.\n\nAll current data will be lost and cannot "
+            "be recovered unless you have another backup.\n\nContinue?",
+            icon="warning",
+        )
+        if not confirmed:
+            return
+
+        path = fd.askopenfilename(
+            title="Select backup file",
+            filetypes=[("Backup archive", "*.tar.gz"), ("All files", "*.*")],
+        )
+        if not path:
+            return
+
+        try:
+            with tarfile.open(path, "r:gz") as tar:
+                db_members = [m for m in tar.getmembers() if m.name.endswith(".db")]
+                if not db_members:
+                    self.flash("Restore failed: no .db file found in archive.")
+                    return
+                member = db_members[0]
+                with tempfile.NamedTemporaryFile(delete=False, suffix=".db") as tmp:
+                    tmp_path = tmp.name
+                extracted = tar.extractfile(member)
+                with open(tmp_path, "wb") as f:
+                    f.write(extracted.read())
+            os.replace(tmp_path, DB_PATH)
+            self.refresh()
+            self.flash("Database restored successfully.")
+        except Exception as e:
+            self.flash(f"Restore failed: {e}")
 
 
 # ── Entry point ───────────────────────────────────────────────────────────────

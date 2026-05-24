@@ -1507,6 +1507,7 @@ class RegisterTab(ctk.CTkFrame):
             ("🔗 Link to Bill", self._link_to_bill,           120),
             ("Unlink",          self._unlink_transaction,      72),
             ("✓ Review",        self._toggle_reviewed,         88),
+            ("📋 Create Bill",  self._create_bill_from_txn,   110),
             ("⚠ Delete All",    self._delete_all_transactions, 100),
         ]:
             ctk.CTkButton(sub, text=label, width=width, height=30,
@@ -1809,6 +1810,15 @@ class RegisterTab(ctk.CTkFrame):
                       f"Unlink from \"{bill_desc}\"?\nThe bill will revert to unpaid.",
                       lambda: (db.unlink_transaction(instance_id, DB_PATH),
                                self._app.refresh()))
+
+    def _create_bill_from_txn(self):
+        if not self._selected_id:
+            self._app.flash("Select a transaction to create a bill from.")
+            return
+        txn = next((t for t in self._transactions if t["id"] == self._selected_id), None)
+        if not txn:
+            return
+        CreateBillFromTxnDialog(self, self._app, txn)
 
     def _delete_all_transactions(self):
         count = len(self._transactions)
@@ -2530,6 +2540,163 @@ class AccountSettingsDialog(ctk.CTkToplevel):
             "as_of_date":       "",
             "buffer":           self._current_settings.get("buffer", 0.0),
         }, DB_PATH)
+        self.destroy()
+        self._app.refresh()
+
+
+# ── Create Bill from Transaction Dialog ──────────────────────────────────────
+
+class CreateBillFromTxnDialog(ctk.CTkToplevel):
+    def __init__(self, parent, app, txn):
+        super().__init__(parent)
+        self._app = app
+        self._txn = txn
+
+        self.title("Create Bill from Transaction")
+        self.geometry("460x520")
+        self.resizable(False, False)
+        self.after(100, self.grab_set)
+        self.after(100, self.focus_set)
+
+        # Transaction summary header
+        hdr = ctk.CTkFrame(self, fg_color=C["card2"], corner_radius=0)
+        hdr.pack(fill="x")
+        ctk.CTkLabel(hdr, text="Transaction:",
+                     font=ctk.CTkFont(size=12, weight="bold"),
+                     text_color=C["muted"]).pack(side="left", padx=(12, 6), pady=8)
+        ctk.CTkLabel(hdr,
+                     text=f"{txn['date']}  |  {txn['description']}  |  ${txn['amount']:,.2f}",
+                     font=ctk.CTkFont(size=12), text_color=C["text"]).pack(side="left")
+
+        # Parse transaction date for pre-fills
+        try:
+            _m, _d, _y = txn["date"].split("/")
+            self._txn_month_key = f"{_y}-{_m}"
+            self._txn_due_day   = int(_d)
+        except Exception:
+            self._txn_month_key = date.today().strftime("%Y-%m")
+            self._txn_due_day   = 1
+
+        def _field(label, default):
+            row = ctk.CTkFrame(self, fg_color="transparent")
+            row.pack(fill="x", padx=16, pady=5)
+            ctk.CTkLabel(row, text=label, width=120, anchor="w").pack(side="left")
+            var = tk.StringVar(value=str(default))
+            ctk.CTkEntry(row, textvariable=var, width=260).pack(side="left")
+            return var
+
+        def _menu(label, values, default):
+            row = ctk.CTkFrame(self, fg_color="transparent")
+            row.pack(fill="x", padx=16, pady=5)
+            ctk.CTkLabel(row, text=label, width=120, anchor="w").pack(side="left")
+            var = tk.StringVar(value=default)
+            ctk.CTkOptionMenu(row, values=values, variable=var, width=260).pack(side="left")
+            return var
+
+        # Strip leading "Debit "/"Credit " from description (already done in parse, but just in case)
+        raw_desc = re.sub(r"^(debit|credit)\s+", "", txn.get("description", ""), flags=re.IGNORECASE).strip()
+
+        self._desc_var    = _field("Description",   raw_desc)
+        self._amount_var  = _field("Typical $",     f"{txn['amount']:.2f}")
+        self._due_day_var = _field("Due Day (1–31)", str(self._txn_due_day))
+        self._freq_var    = _menu("Frequency",      FREQUENCIES, "Monthly")
+        self._pm_var      = _menu("Payment Mode",   PAYMENT_MODES, "—")
+        self._vibe_var    = _menu("Vibe",           VIBES, "—")
+        self._notes_var   = _field("Notes",         "")
+
+        # Link checkbox
+        link_row = ctk.CTkFrame(self, fg_color="transparent")
+        link_row.pack(fill="x", padx=16, pady=(8, 2))
+        self._link_var = tk.BooleanVar(value=True)
+        ctk.CTkCheckBox(link_row, text="Link this transaction to the new bill",
+                        variable=self._link_var).pack(side="left")
+
+        self._err = ctk.CTkLabel(self, text="", text_color=C["red"],
+                                 font=ctk.CTkFont(size=11))
+        self._err.pack(padx=16, anchor="w", pady=(4, 0))
+
+        btn_row = ctk.CTkFrame(self, fg_color="transparent")
+        btn_row.pack(fill="x", padx=16, pady=12, side="bottom")
+        ctk.CTkButton(btn_row, text="Create", width=120,
+                      command=self._save).pack(side="right", padx=(8, 0))
+        ctk.CTkButton(btn_row, text="Cancel", width=100,
+                      fg_color="transparent", border_width=1,
+                      command=self.destroy).pack(side="right")
+
+    def _save(self):
+        desc = self._desc_var.get().strip()
+        if not desc:
+            self._err.configure(text="Description is required.")
+            return
+        try:
+            amount = float(self._amount_var.get().replace("$", "").replace(",", ""))
+        except ValueError:
+            self._err.configure(text="Typical $ must be a number.")
+            return
+        try:
+            due_day = int(self._due_day_var.get().strip())
+            if not 1 <= due_day <= 31:
+                raise ValueError
+        except ValueError:
+            self._err.configure(text="Due Day must be 1–31.")
+            return
+
+        freq = self._freq_var.get()
+        pm   = self._pm_var.get()
+        vibe = self._vibe_var.get()
+
+        defn_data = {
+            "description":    desc,
+            "frequency":      freq,
+            "typical_amount": amount,
+            "due_day":        due_day,
+            "months_active":  "",
+            "adhoc_month":    self._txn_month_key if freq == "AdHoc" else "",
+            "notes":          self._notes_var.get().strip(),
+            "payment_mode":   "" if pm   == "—" else pm,
+            "vibe":           "" if vibe == "—" else vibe,
+        }
+
+        # Safe2Spend / funding rules:
+        #
+        # Case A — link checked: link_bill_to_transaction sets funded=1 + status=Paid
+        #   atomically. A Paid bill is never counted in funded_not_yet_paid, so
+        #   Safe2Spend is unchanged. No check needed — the money already left the
+        #   account and is reflected in bank_balance.
+        #
+        # Case B — link unchecked: instance is created funded=0 + status=Due.
+        #   Unfunded bills also never enter funded_not_yet_paid, so Safe2Spend is
+        #   unchanged. If the user manually funds it later, _toggle_funded enforces
+        #   the Safe2Spend check at that point.
+        #
+        # In neither case do we create a funded=1 + status=Due (the only combination
+        # that would reduce Safe2Spend), so no pre-flight check is required here.
+
+        # Clamp due_day to actual month-end for the due_date on the instance
+        import calendar as _cal
+        yr, mo = map(int, self._txn_month_key.split("-"))
+        actual_day = min(due_day, _cal.monthrange(yr, mo)[1])
+        due_date = f"{mo:02d}/{actual_day:02d}/{yr}"
+
+        def_id  = db.insert_definition(defn_data, DB_PATH)
+        inst_id = db.insert_instance({
+            "definition_id": def_id,
+            "month_key":     self._txn_month_key,
+            "description":   desc,
+            "status":        "Due",
+            "due_date":      due_date,
+            "amount":        amount,
+            "frequency":     freq,
+            "payment_mode":  defn_data["payment_mode"],
+            "vibe":          defn_data["vibe"],
+            "funded":        0,       # always starts unfunded; link_bill_to_transaction
+            "date_paid":     "",      # handles fund+pay atomically if link is checked
+            "notes":         defn_data["notes"],
+        }, DB_PATH)
+
+        if self._link_var.get():
+            db.link_bill_to_transaction(inst_id, self._txn["id"], DB_PATH)
+
         self.destroy()
         self._app.refresh()
 

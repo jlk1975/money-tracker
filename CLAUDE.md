@@ -118,7 +118,7 @@ python3 wipe.py    # interactive: wipe instances only, or everything
   - `Cumulative Txns`: total row count in `register_transactions`
   - `Showing Txns`: count of rows currently visible after all filters; updates live
   - `Last Import`: "Last Import: N new" — set after each CSV import, blank until first import
-- **Toolbar left**: ⬆ Import CSV | 🔗 Link to Bill | 🗑 Unlink | ✓ Review | ⚠ Delete All | search box
+- **Toolbar left**: ⬆ Import CSV | 🔗 Link to Bill | Unlink | ✓ Review | 📋 Create Bill | ⚠ Delete All | search box
 - **Toolbar right**: [All][Linked][Unlinked] filter | [All][Reviewed][Unreviewed] filter
 - **Table columns**: Rev | Txn # | Date | Description | Memo | Debit | Credit | Balance | Check # | Bill
   - Balance column = `bank_balance` from CSV (the bank's own running balance per row)
@@ -133,6 +133,12 @@ python3 wipe.py    # interactive: wipe instances only, or everything
   - Filter label shows "Showing X of Y bills — [Month], by amount match"
   - On link: sets `transaction_id`, `funded=1`, `status='Paid'`, `date_paid=today`, `soft_pay=0`
 - **Unlink**: clears `transaction_id`, sets `status='Due'`, `funded=0`
+- **📋 Create Bill** (`CreateBillFromTxnDialog`): creates a new bill definition + instance from a selected transaction in one flow
+  - Pre-fills: description (from transaction, "Debit"/"Credit" prefix stripped), amount, due day (from transaction date)
+  - User sets frequency, payment mode, vibe, notes
+  - "Link this transaction" checkbox (checked by default): calls `link_bill_to_transaction` after insert, marking the bill funded+Paid atomically
+  - **Safe2Spend rules**: linking sets `funded=1 + status='Paid'` — Paid bills are never in `funded_not_yet_paid`, so Safe2Spend is unchanged; no pre-flight check needed. If unchecked, bill is created `funded=0 + status=Due` — also no Safe2Spend impact. Manual funding later goes through `_toggle_funded` which enforces the check.
+  - Instance is inserted directly for the transaction's month (bypasses `generate_month_instances` which skips months that already have instances)
 - **Delete All Transactions**: confirmation dialog; resets all linked bill instances to Due/unfunded/unlinked
 - **`AccountSettingsDialog`**: only account name field (no starting balance — balance is derived purely from imported CSV `bank_balance` values)
 

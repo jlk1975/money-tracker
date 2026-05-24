@@ -391,27 +391,48 @@ class CombinedDashboard(ctk.CTkFrame):
                       command=self._app.navigate_to_today).pack(
             side="left", padx=(10, 0), pady=7)
 
-        self._month_total_lbl = ctk.CTkLabel(
-            self._nav_bar, text="",
-            font=ctk.CTkFont(size=13, weight="bold"),
-            text_color=C["heading"],
-        )
-        self._month_total_lbl.place(relx=0.5, rely=0.5, anchor="center")
-
-        self._toggle_btn = ctk.CTkButton(self._nav_bar, text="▲ Hide Summary",
-                                          width=120, height=28,
+        # Hide button packed right first so the middle frame fills remaining space
+        self._toggle_btn = ctk.CTkButton(self._nav_bar, text="▲ Hide",
+                                          width=80, height=28,
                                           command=self._toggle_metrics)
         self._toggle_btn.pack(side="right", padx=(0, 10), pady=7)
 
-        self._dash_s2s_label = ctk.CTkLabel(
-            self._nav_bar, text="Safe2Spend: —",
-            font=ctk.CTkFont(size=13), text_color=C["green"])
-        self._dash_s2s_label.pack(side="right", padx=(0, 16), pady=7)
+        # Middle expanding frame — 5 equal columns, evenly spaced between nav and Hide
+        _mid = ctk.CTkFrame(self._nav_bar, fg_color="transparent")
+        _mid.pack(side="left", fill="x", expand=True)
+        for _c in range(5):
+            _mid.columnconfigure(_c, weight=1)
 
-        self._dash_buffer_label = ctk.CTkLabel(
-            self._nav_bar, text="Buffer: $0.00",
-            font=ctk.CTkFont(size=13), text_color=C["muted"])
-        self._dash_buffer_label.pack(side="right", padx=(0, 8), pady=7)
+        self._funded_through_lbl = ctk.CTkLabel(
+            _mid, text="",
+            font=ctk.CTkFont(size=13, weight="bold"), text_color=C["heading"])
+        self._funded_through_lbl.grid(row=0, column=0, pady=7)
+
+        ctk.CTkLabel(_mid, text="💰", font=ctk.CTkFont(size=15)).grid(
+            row=0, column=1, pady=7)
+
+        self._month_total_lbl = ctk.CTkLabel(
+            _mid, text="",
+            font=ctk.CTkFont(size=13, weight="bold"), text_color=C["heading"])
+        self._month_total_lbl.grid(row=0, column=2, pady=7)
+
+        # Progress bar + pct label as a unit in column 3
+        _prog_frame = ctk.CTkFrame(_mid, fg_color="transparent")
+        _prog_frame.grid(row=0, column=3, pady=7)
+        self._nav_progress_bar = ctk.CTkProgressBar(
+            _prog_frame, width=120, height=10,
+            progress_color=C["green"], fg_color=C["border"])
+        self._nav_progress_bar.set(0)
+        self._nav_progress_bar.pack(side="left", padx=(0, 4))
+        self._nav_pct_label = ctk.CTkLabel(
+            _prog_frame, text="Paid 0%",
+            font=ctk.CTkFont(size=12), text_color=C["muted"], width=52)
+        self._nav_pct_label.pack(side="left")
+
+        self._dash_s2s_label = ctk.CTkLabel(
+            _mid, text="Safe2Spend: —",
+            font=ctk.CTkFont(size=13), text_color=C["green"])
+        self._dash_s2s_label.grid(row=0, column=4, pady=7)
 
         self._metrics_panel = ctk.CTkFrame(self, fg_color="transparent")
         self._metrics_panel.pack(fill="x")
@@ -495,10 +516,10 @@ class CombinedDashboard(ctk.CTkFrame):
     def _toggle_metrics(self):
         if self._metrics_visible:
             self._metrics_panel.pack_forget()
-            self._toggle_btn.configure(text="▼ Show Summary")
+            self._toggle_btn.configure(text="▼ Show")
         else:
             self._metrics_panel.pack(fill="x", before=self._toolbar)
-            self._toggle_btn.configure(text="▲ Hide Summary")
+            self._toggle_btn.configure(text="▲ Hide")
         self._metrics_visible = not self._metrics_visible
 
     def _toggle_vibe_filter(self, emoji):
@@ -585,21 +606,28 @@ class CombinedDashboard(ctk.CTkFrame):
         self._right_btn.configure(
             state="normal" if self._app.can_navigate_right() else "disabled")
 
-        month_total = summary["total_due"] + summary["total_paid"]
+        month_total  = summary["total_due"] + summary["total_paid"]
         paid_count   = sum(1 for b in annotated if b.get("status") == "Paid")
         unpaid_count = sum(1 for b in annotated if b.get("status") != "Paid")
         self._month_total_lbl.configure(
-            text=f"{summary['bill_count']} Bills In {calendar.month_name[month]}:  ${month_total:,.2f}"
-                 f"    ·    {paid_count} paid  /  {unpaid_count} unpaid")
-
-        acct = db.get_account_settings(DB_PATH)
-        buf = acct.get("buffer", 0.0)
-        self._dash_buffer_label.configure(text=f"Buffer: ${buf:,.2f}")
+            text=f"{summary['bill_count']} bills  ·  ${month_total:,.2f}  ·  ✓ {paid_count}  ·  ○ {unpaid_count}")
 
         s2s = db.get_safe2spend(DB_PATH)
         s2s_color = C["green"] if s2s >= 0 else C["red"]
         s2s_str = f"${s2s:,.2f}" if s2s >= 0 else f"-${abs(s2s):,.2f}"
         self._dash_s2s_label.configure(text=f"Safe2Spend: {s2s_str}", text_color=s2s_color)
+
+        _paid  = summary.get("total_paid", 0)
+        _total = _paid + summary.get("total_due", 0)
+        _pct   = (_paid / _total) if _total else 0
+        self._nav_progress_bar.set(max(0.0, min(1.0, _pct)))
+        self._nav_pct_label.configure(text=f"Paid {_pct*100:.0f}%")
+
+        days_str, caption_str = calc.funded_through_parts(annotated, month_key)
+        if days_str and days_str != "0 days":
+            self._funded_through_lbl.configure(text=caption_str)
+        else:
+            self._funded_through_lbl.configure(text="")
 
         if self._vibe_filter:
             display = [b for b in annotated

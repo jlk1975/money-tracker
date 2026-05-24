@@ -47,8 +47,10 @@ python3 wipe.py    # interactive: wipe instances only, or everything
 - `id`, `definition_id`, `month_key` (YYYY-MM), `description`
 - `status` (Due/Paid), `due_date` (MM/DD/YYYY), `amount`, `frequency`
 - `date_paid`, `notes`, `row_order`, `payment_mode`, `vibe`
-- `funded` (0/1) — whether the bill has been funded for the month (default 0)
+- `funded` (0/1) — whether the bill has been funded (default 0)
 - `deleted` (0/1) — soft-delete flag; rows are never physically removed so `generate_month_instances` can see that a definition was already handled for the month and won't recreate it on restart
+- `transaction_id` — FK to `register_transactions.id`; NULL when unpaid/unlinked; set by Link-to-Bill flow which also auto-funds and auto-pays
+- `soft_pay` (0/1) — informational flag: "I paid this manually but the transaction hasn't cleared"; does NOT change status/funded/Safe2Spend; requires bill to be funded first; cleared automatically when a transaction is linked
 
 **`debts`** — one row per debt (e.g. loan, credit card)
 - `id`, `name`, `interest_rate` (REAL), `monthly_payment` (REAL)
@@ -61,11 +63,16 @@ python3 wipe.py    # interactive: wipe instances only, or everything
 - User logs a new balance each month by clicking a debt row; most recent entry is the "current" balance
 
 **`register_transactions`** — one row per checking account transaction
-- `id`, `date` (MM/DD/YYYY), `description`, `type` ("Deposit" or "Payment"), `amount` (REAL, always positive), `notes`
-- `transaction_number` — bank-assigned transaction ID; populated on CSV import, blank for manual entries; used for duplicate detection
+- `id`, `date` (MM/DD/YYYY), `description`, `type` ("Deposit" or "Payment"), `amount` (REAL, always positive)
+- `transaction_number` — bank-assigned ID; used for duplicate detection on CSV import; blank for manual entries
+- `memo`, `check_number` — from bank CSV columns
+- `bank_balance` (REAL, nullable) — bank's own running balance from CSV; used as authoritative current balance; NULL for manually added rows
+- `reviewed` (0/1) — user-toggled "I have reviewed this transaction" flag; always 0 on import
+- `notes` — legacy field, kept for manual entries
 
 **`account_settings`** — single-row table (id=1) for the checking account
-- `account_name`, `starting_balance` (REAL), `as_of_date` (MM/DD/YYYY, optional reference)
+- `account_name`, `starting_balance` (REAL), `as_of_date` (MM/DD/YYYY)
+- `buffer` (REAL, default 0.0) — dollar amount always subtracted from Safe2Spend
 - Read/written via `db.get_account_settings()` / `db.set_account_settings()`
 
 ## Key concepts
@@ -75,29 +82,69 @@ python3 wipe.py    # interactive: wipe instances only, or everything
 - **Frequency routing**: Monthly=every month; AdHoc=only in `adhoc_month`; Annual/Semi-Annual/Quarterly/Bi-Weekly/Weekly use `months_active`
 - **`due_day` clamping**: clamped to actual month-end (e.g. day 31 → Feb 28)
 - **Navigation**: left arrow = only to months with existing instances; right arrow = auto-generates up to 12 months ahead of today
-- **`annotate_instances()`** returns instances as a new list of dicts (no longer adds computed fields)
+- **`annotate_instances()`** returns instances as a new list of dicts
 - **`calculate_summary()`** returns `total_due`, `total_paid`, `bill_count`
-- **`funded_through_parts(instances, month_key)`** returns `(days_str, caption_str)` — consecutive funded-through date for unpaid bills from today; days_str is `"X days"`, `"today"`, or `"0 days"`
-- **Funded workflow**: bills must be marked Funded before they can be marked Paid; toolbar has Mark Funded / Mark Not Funded / Mark Paid / Mark Unpaid buttons
+- **`funded_through_parts(instances, month_key)`** returns `(days_str, caption_str)` — consecutive funded-through date for unpaid bills from today
+- **Funded workflow**: bills must be funded before soft pay or paid; a bill is marked Paid only by being linked to a register transaction (Link-to-Bill auto-funds + auto-pays in one step)
+- **Safe2Spend** = `bank_balance` (most recent transaction's bank_balance) − `buffer` − `funded_not_yet_paid` (sum of amounts for funded+Due instances across all months); shown on both Register and Dashboard nav bars; can be negative (shown red)
+- **Funding enforcement**: `Mark Funded` and `All Funded` check Safe2Spend before writing; blocked with flash message if insufficient; $0 bills skip the check
 - **Tab switching**: no CTkTabview — manual frame-swap via `_switch_tab()`; "Dashboard" / "Definitions" / "Debt" / "Register" buttons centered in header; active tab highlighted in blue, inactive in `C["card2"]`
 - **Header**: 💰 emoji (size 36) on left and right ends; tab buttons centered via 3-column grid layout; window title is "Bill Tracker"
 - **`self._register` is a reserved name** on `ctk.CTk` (shadows tkinter's internal `_register()` method) — the Register tab instance is stored as `self._reg_tab`
-- **Dashboard tab**: 2 rows of 4 widgets + collapsible toggle; Definitions tab unchanged
-  - Row 1: `VibeBarsCard` (horizontal bar chart by vibe emoji), Payment Progress, Paid, Due
+
+## Dashboard tab (`CombinedDashboard`)
+
+- **Nav bar** (left→right): ◀ [Month YYYY] ▶  This Month  |  [centered: "N Bills In Month: $X · Y paid / Z unpaid"]  |  Buffer: $X  Safe2Spend: $X  ▲ Hide Summary
+  - All nav bar text is size 13; Safe2Spend is green; Buffer is muted
+  - No vibe filter buttons (removed — `_vibe_filter` set exists but is always empty)
+- **Metrics panel** (collapsible): 2 rows of 4 KPI widgets
+  - Row 1: `VibeBarsCard`, Payment Progress, Paid, Due
   - Row 2: Funded Not Paid, Funding Progress, Funded, Not Funded
   - Right sidebar: Spending by Vibe + By Pay Mode breakdowns
-  - Nav bar vibe filter buttons (🌟 🤷 💔): toggle to filter table + all 8 KPI widgets to selected vibes; none selected = show all; stored in `_vibe_filter` set on `CombinedDashboard`
-  - Nav bar center label: "Bills This Month: $X,XXX.XX" — always shows the full unfiltered month total (due + paid); centered via `place(relx=0.5)` so it stays under the tab buttons regardless of vibe filter state
-  - **Funding Progress** widget label is dynamic: shows `"Funded through [date] · [days]"` (from `funded_through_parts()`); falls back to `"Funding Progress"` when nothing is funded
-  - **Due** and **Not Funded** KPI values turn green when $0.00, red otherwise
-  - **Toolbar** (dashboard only): search box filters table rows live by description; "Show Paid (N)" and "Show Unpaid (N)" toggle buttons filter by status — mutually exclusive, counts reflect current vibe-filtered display; search and status filter stack
-- **VibeBarsCard**: replaces old "Total Bills" KPI; tk.Canvas with `height=1` hint (prevents Tk 150px default); draws horizontal bars — emoji left, bar, count right; bars spread evenly to fill card height via `_paint` on `<Configure>`
+- **Toolbar**: `All Funded` / `All Unfunded` / `Funded/Unfunded` / `💸 Soft Pay` / `+ Add Bill` / `✎ Edit` / `🗑 Delete` + search box + `Show Paid (N)` / `Show Unpaid (N)` status filter toggles
+  - `All Funded`: funds all unfunded visible bills (Safe2Spend check); `All Unfunded`: strips funding from all funded visible bills
+  - `Soft Pay`: toggles `soft_pay` flag; bill must be funded first; does not affect status or Safe2Spend
+- **Bill table columns** (left→right): Funded | Soft | Vibe | ✓ | Status | Pay Mode | Expense | Due Date | Amount | Frequency | Date Paid
+  - Funded and Soft are leftmost for visibility
 - **`_draw` conflict**: `ctk.CTkFrame` calls `self._draw()` internally — never name a canvas paint method `_draw` in a CTkFrame subclass; use `_paint` instead
-- **Definitions tab** (`DefinitionsTab`): table is sortable by column heading click; search box in toolbar filters live across Description, Frequency, and Notes
-- **Debt tab** (`DebtTrackerTab`): summary card at top shows Total Debt / Total Monthly Payments / Years Until Debt Free; toolbar has Add/Edit/Delete; clicking a debt row opens `BalanceDialog` to log balance for current month; chart at bottom (`tk.Canvas`) toggles between Total and Per Debt trend lines; table is sortable by column heading click
-- **Register tab** (`RegisterTab`): stored as `self._reg_tab` on `MoneyTrackerApp`; account info bar shows account name + current balance + "⚙ Account Settings" button; toolbar has Import CSV (planned) / Add / Edit / Delete; table columns: Date | Description | Payment | Deposit | Balance | Notes; Balance column always reflects chronological running balance regardless of current sort; deposit rows shown in green; negative balance rows shown in red; `AccountSettingsDialog` sets account name, starting balance, and as-of date; `TransactionDialog` has Deposit/Payment toggle
-- **Debt balance workflow**: one `debt_balances` row per debt per month; clicking a debt row always logs for today's YYYY-MM; multiple updates in same month overwrite (last write wins); chart plots all historical entries
-- **Years Until Debt Free**: derived from latest `payoff_date` across all debts; shows "N/A" if any debt has no payoff date set
+- **VibeBarsCard**: tk.Canvas with `height=1` hint; draws horizontal bars — emoji left, bar, count right; spread via `_paint` on `<Configure>`
+- **Funding Progress** widget label: shows `"Funded through [date] · [days]"` when funded; falls back to `"Funding Progress"`
+- **Due** and **Not Funded** KPI values turn green when $0.00, red otherwise
+
+## Register tab (`RegisterTab`)
+
+- Stored as `self._reg_tab` on `MoneyTrackerApp`
+- **Account info bar**: Account Name | Balance | Buffer [entry] [Set] | Safe2Spend | Buffer display | Cumulative Txns | Showing Txns | Last Import | ⚙ Account Settings
+  - `Cumulative Txns`: total row count in `register_transactions`
+  - `Showing Txns`: count of rows currently visible after all filters; updates live
+  - `Last Import`: "Last Import: N new" — set after each CSV import, blank until first import
+- **Toolbar left**: ⬆ Import CSV | 🔗 Link to Bill | 🗑 Unlink | ✓ Review | ⚠ Delete All | search box
+- **Toolbar right**: [All][Linked][Unlinked] filter | [All][Reviewed][Unreviewed] filter
+- **Table columns**: Rev | Txn # | Date | Description | Memo | Debit | Credit | Balance | Check # | Bill
+  - Balance column = `bank_balance` from CSV (the bank's own running balance per row)
+  - Bill column = linked bill instance description (blank if unlinked)
+  - Deposit rows: green; linked rows: blue tint; reviewed rows: muted foreground; negative balance: red
+- **CSV import**: `parse_bank_csv(path)` → dedup by `transaction_number` (rows with one) or `(date, type, amount, description)` fingerprint (rows without); new rows always get `reviewed=0`; flash shows "Imported N (M duplicates skipped)"
+- **Review toggle** (`✓ Review`): toggles `reviewed` flag; after toggling, selection auto-advances to the next row in current display order — if the toggled row disappears from the filter view, the row at the same index becomes selected; if it stays, selection moves one down
+- **Link-to-Bill flow**: select a Payment transaction → click 🔗 Link to Bill → `LinkBillDialog` opens
+  - Default view: bills from the same month as the transaction, sorted by closest amount match
+  - Search box filters by description or amount in real time
+  - "Show All" button (blue when active) reveals all unlinked+unpaid bills across all months
+  - Filter label shows "Showing X of Y bills — [Month], by amount match"
+  - On link: sets `transaction_id`, `funded=1`, `status='Paid'`, `date_paid=today`, `soft_pay=0`
+- **Unlink**: clears `transaction_id`, sets `status='Due'`, `funded=0`
+- **Delete All Transactions**: confirmation dialog; resets all linked bill instances to Due/unfunded/unlinked
+- **`AccountSettingsDialog`**: only account name field (no starting balance — balance is derived purely from imported CSV `bank_balance` values)
+
+## Definitions tab (`DefinitionsTab`)
+- Table is sortable by column heading click; search box filters live across Description, Frequency, and Notes
+
+## Debt tab (`DebtTrackerTab`)
+- Summary card at top: Total Debt / Total Monthly Payments / Years Until Debt Free
+- Toolbar: Add/Edit/Delete; clicking a debt row opens `BalanceDialog` to log balance for current month
+- Chart (`tk.Canvas`) toggles between Total and Per Debt trend lines; table is sortable by column heading click
+- **Debt balance workflow**: one `debt_balances` row per debt per month; multiple updates in same month overwrite (last write wins)
+- **Years Until Debt Free**: derived from latest `payoff_date` across all debts; shows "N/A" if any debt has no payoff date
 
 ## Expected totals (from fixtures)
 - May 2026: 16 bills, $3,486.59 (Monthly only — no AdHoc)

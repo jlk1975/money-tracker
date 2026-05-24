@@ -379,8 +379,8 @@ class CombinedDashboard(ctk.CTkFrame):
         self._left_btn.pack(side="left", padx=(10, 4), pady=7)
 
         self._month_lbl = ctk.CTkLabel(self._nav_bar, text="",
-                                        font=ctk.CTkFont(size=15, weight="bold"),
-                                        text_color=C["heading"], width=160)
+                                        font=ctk.CTkFont(size=13, weight="bold"),
+                                        text_color=C["heading"], width=130)
         self._month_lbl.pack(side="left", padx=6)
 
         self._right_btn = ctk.CTkButton(self._nav_bar, text="▶", width=36, height=28,
@@ -391,16 +391,9 @@ class CombinedDashboard(ctk.CTkFrame):
                       command=self._app.navigate_to_today).pack(
             side="left", padx=(10, 0), pady=7)
 
-        for emoji, color in [("🌟", C["green"]), ("🤷", C["blue"]), ("💔", C["red"])]:
-            btn = ctk.CTkButton(self._nav_bar, text=emoji, width=36, height=28,
-                                fg_color=C["border"], hover_color=C["card2"],
-                                command=lambda e=emoji: self._toggle_vibe_filter(e))
-            btn.pack(side="left", padx=(6, 0), pady=7)
-            self._vibe_btns[emoji] = (btn, color)
-
         self._month_total_lbl = ctk.CTkLabel(
             self._nav_bar, text="",
-            font=ctk.CTkFont(size=15, weight="bold"),
+            font=ctk.CTkFont(size=13, weight="bold"),
             text_color=C["heading"],
         )
         self._month_total_lbl.place(relx=0.5, rely=0.5, anchor="center")
@@ -593,7 +586,11 @@ class CombinedDashboard(ctk.CTkFrame):
             state="normal" if self._app.can_navigate_right() else "disabled")
 
         month_total = summary["total_due"] + summary["total_paid"]
-        self._month_total_lbl.configure(text=f"{summary['bill_count']} Bills In {calendar.month_name[month]}:  ${month_total:,.2f}")
+        paid_count   = sum(1 for b in annotated if b.get("status") == "Paid")
+        unpaid_count = sum(1 for b in annotated if b.get("status") != "Paid")
+        self._month_total_lbl.configure(
+            text=f"{summary['bill_count']} Bills In {calendar.month_name[month]}:  ${month_total:,.2f}"
+                 f"    ·    {paid_count} paid  /  {unpaid_count} unpaid")
 
         acct = db.get_account_settings(DB_PATH)
         buf = acct.get("buffer", 0.0)
@@ -775,6 +772,13 @@ class CombinedDashboard(ctk.CTkFrame):
     def _toggle_soft_pay(self):
         if not self._selected_id:
             self._app.flash("Select a bill to toggle soft pay.")
+            return
+        annotated, _ = _load_and_annotate(self._app.current_month())
+        inst = next((b for b in annotated if b["id"] == self._selected_id), None)
+        if not inst:
+            return
+        if not inst.get("soft_pay") and not inst.get("funded"):
+            self._app.flash("Bill must be funded before it can be marked soft paid.")
             return
         db.toggle_soft_pay(self._selected_id, DB_PATH)
         self._app.refresh()
@@ -1621,8 +1625,29 @@ class RegisterTab(ctk.CTkFrame):
         if not self._selected_id:
             self._app.flash("Select a transaction to toggle reviewed status.")
             return
+        # Capture display order before refresh so we can advance the selection.
+        ordered = list(self._tree.get_children(""))
+        cur_iid = str(self._selected_id)
+        try:
+            cur_idx = ordered.index(cur_iid)
+        except ValueError:
+            cur_idx = None
+
         db.toggle_reviewed(self._selected_id, DB_PATH)
         self._app.refresh()
+
+        if cur_idx is not None:
+            new_order = self._tree.get_children("")
+            if new_order:
+                # If the acted-on row is gone (filtered out), the next item is
+                # now sitting at cur_idx. If it stayed, advance by 1.
+                row_still_present = cur_iid in new_order
+                next_idx = cur_idx + (1 if row_still_present else 0)
+                target = new_order[min(next_idx, len(new_order) - 1)]
+                self._tree.selection_set(target)
+                self._tree.focus(target)
+                self._tree.see(target)
+                self._selected_id = int(target)
 
     def _populate_tree(self):
         self._tree.delete(*self._tree.get_children())
@@ -2517,9 +2542,10 @@ class LinkBillDialog(ctk.CTkToplevel):
         self._app = app
         self._txn = txn
         self._selected_instance_id = None
+        self._show_all = False
 
         self.title("Link Transaction to Bill")
-        self.geometry("600x420")
+        self.geometry("620x440")
         self.resizable(True, True)
         self.after(100, self.grab_set)
         self.after(100, self.focus_set)
@@ -2533,8 +2559,26 @@ class LinkBillDialog(ctk.CTkToplevel):
                      text=f"{txn['date']}  |  {txn['description']}  |  ${txn['amount']:,.2f}",
                      font=ctk.CTkFont(size=12), text_color=C["text"]).pack(side="left")
 
+        # Toolbar row: filter label + search + Show All button
+        toolbar = ctk.CTkFrame(self, fg_color="transparent")
+        toolbar.pack(fill="x", padx=8, pady=(6, 0))
+        self._filter_label = ctk.CTkLabel(toolbar, text="",
+                                           font=ctk.CTkFont(size=11),
+                                           text_color=C["muted"])
+        self._filter_label.pack(side="left")
+        self._show_all_btn = ctk.CTkButton(toolbar, text="Show All",
+                                            width=80, height=26,
+                                            fg_color=C["border"],
+                                            command=self._toggle_show_all)
+        self._show_all_btn.pack(side="right")
+        self._search_var = tk.StringVar()
+        self._search_var.trace_add("write", lambda *_: self._apply_search())
+        ctk.CTkEntry(toolbar, textvariable=self._search_var,
+                     placeholder_text="🔍  description or amount...",
+                     width=200, height=26).pack(side="right", padx=(0, 8))
+
         container = tk.Frame(self, bg="#1a1a2e")
-        container.pack(fill="both", expand=True, padx=8, pady=(8, 0))
+        container.pack(fill="both", expand=True, padx=8, pady=(4, 0))
 
         cols = [("Month", 90), ("Description", 240), ("Amount", 95),
                 ("Due Date", 95), ("Funded?", 65)]
@@ -2566,14 +2610,20 @@ class LinkBillDialog(ctk.CTkToplevel):
 
         self._tree.bind("<<TreeviewSelect>>", self._on_select)
 
-        instances = db.load_linkable_instances(DB_PATH)
-        for inst in instances:
-            yr, mo = inst["month_key"].split("-")
-            mlabel  = f"{MONTH_NAMES[int(mo)-1]} {yr}"
-            funded  = "✓" if inst.get("funded") else ""
-            self._tree.insert("", "end", iid=str(inst["id"]),
-                              values=(mlabel, inst["description"],
-                                      _fmt(inst["amount"]), inst["due_date"], funded))
+        # Pre-compute smart vs all lists once
+        all_instances = db.load_linkable_instances(DB_PATH)
+        txn_amount = txn.get("amount", 0.0) or 0.0
+        try:
+            m, d, y = txn["date"].split("/")
+            txn_month = f"{y}-{m}"
+        except Exception:
+            txn_month = ""
+
+        same_month = [i for i in all_instances if i["month_key"] == txn_month]
+        same_month.sort(key=lambda i: abs((i.get("amount") or 0.0) - txn_amount))
+
+        self._smart_instances = same_month
+        self._all_instances   = all_instances
 
         btn_row = ctk.CTkFrame(self, fg_color="transparent")
         btn_row.pack(fill="x", padx=12, pady=10, side="bottom")
@@ -2584,8 +2634,58 @@ class LinkBillDialog(ctk.CTkToplevel):
                       fg_color="transparent", border_width=1,
                       command=self.destroy).pack(side="right")
 
+        self._apply_search()
+
+    def _toggle_show_all(self):
+        self._show_all = not self._show_all
+        self._show_all_btn.configure(
+            fg_color=C["blue"] if self._show_all else C["border"])
+        self._selected_instance_id = None
+        self._link_btn.configure(state="disabled")
+        self._apply_search()
+
+    def _apply_search(self):
+        q = self._search_var.get().strip().lower()
+        base = self._all_instances if self._show_all else self._smart_instances
+        if q:
+            def _matches(inst):
+                if q in inst.get("description", "").lower():
+                    return True
+                if q in _fmt(inst.get("amount", 0)):
+                    return True
+                return False
+            filtered = [i for i in base if _matches(i)]
+        else:
+            filtered = base
+        self._selected_instance_id = None
+        self._link_btn.configure(state="disabled")
+        self._populate(filtered)
+
+    def _populate(self, instances):
+        self._tree.delete(*self._tree.get_children())
+        for inst in instances:
+            yr, mo = inst["month_key"].split("-")
+            mlabel = f"{MONTH_NAMES[int(mo)-1]} {yr}"
+            funded = "✓" if inst.get("funded") else ""
+            self._tree.insert("", "end", iid=str(inst["id"]),
+                              values=(mlabel, inst["description"],
+                                      _fmt(inst["amount"]), inst["due_date"], funded))
+        total = len(self._all_instances)
+        base_count = len(self._all_instances if self._show_all else self._smart_instances)
+        showing = len(instances)
+        if self._show_all:
+            self._filter_label.configure(
+                text=f"Showing {showing} of {total} unlinked bills")
+        else:
+            try:
+                m, d, y = self._txn["date"].split("/")
+                mo_name = f"{MONTH_NAMES[int(m)-1]} {y}"
+            except Exception:
+                mo_name = "this month"
+            self._filter_label.configure(
+                text=f"Showing {showing} of {total} bills — {mo_name}, by amount match")
         if not instances:
-            ctk.CTkLabel(self, text="No unlinked, unpaid bills found.",
+            ctk.CTkLabel(self, text="No matching bills found.",
                          font=ctk.CTkFont(size=12), text_color=C["muted"]).pack(pady=16)
 
     def _on_select(self, _=None):

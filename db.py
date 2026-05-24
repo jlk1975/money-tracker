@@ -585,14 +585,32 @@ def get_transaction_fingerprints(db_path=DEFAULT_DB):
 
 
 def load_linkable_instances(db_path=DEFAULT_DB):
-    """Return all unlinked, unpaid, non-deleted bill instances across all months."""
+    """Return all unlinked, unpaid, non-deleted bill instances across all months.
+
+    Sorted so current and past months appear first (most recent first), followed
+    by future months (nearest first), so the most relevant bills are at the top.
+    """
+    today_month = date.today().strftime("%Y-%m")
+
+    def _sort_key(inst):
+        mk = inst["month_key"]
+        y, m = map(int, mk.split("-"))
+        ordinal = y * 12 + m
+        if mk <= today_month:
+            # past/current: most recent first (negate ordinal)
+            return (0, -ordinal, inst.get("row_order", 0))
+        else:
+            # future: nearest first
+            return (1, ordinal, inst.get("row_order", 0))
+
     with _conn(db_path) as con:
         rows = con.execute(
             "SELECT * FROM bill_instances "
-            "WHERE transaction_id IS NULL AND status='Due' AND deleted=0 "
-            "ORDER BY month_key DESC, row_order"
+            "WHERE transaction_id IS NULL AND status='Due' AND deleted=0"
         ).fetchall()
-    return [_row_to_dict(r) for r in rows]
+    instances = [_row_to_dict(r) for r in rows]
+    instances.sort(key=_sort_key)
+    return instances
 
 
 def link_bill_to_transaction(instance_id, transaction_id, db_path=DEFAULT_DB):

@@ -97,11 +97,11 @@ python3 wipe.py    # interactive: wipe instances only, or everything
 ## Dashboard tab (`CombinedDashboard`)
 
 - **Nav bar** layout: left cluster (◀ [Month YYYY] ▶ This Month) | 5-column equal-weight middle grid | ▲ Hide Summary (right)
-  - Middle grid columns: funded-through label | 4 random animal emojis | bills info label | progress bar + Paid % | Safe2Spend
+  - Middle grid columns: funded-through label | 1 random animal emoji | bills info label | progress bar + Paid % | Safe2Spend
   - Implemented as a `CTkFrame` packed with `fill="x", expand=True`, children in `grid` with `columnconfigure(weight=1)` — ensures even spacing regardless of window width
-  - 4 random animals picked at app launch via `random.sample()` from a pool of 16 emoji (fox, lion, unicorn, parrot, peacock, butterfly, dragon, raccoon, frog, tiger, shark, flamingo, otter, hedgehog, brontosaurus, T-Rex); Noto Color Emoji is installed so they render in color
+  - 1 random animal picked at app launch via `random.choice()` from a pool of 16 emoji (fox, lion, unicorn, parrot, peacock, butterfly, dragon, raccoon, frog, tiger, shark, flamingo, otter, hedgehog, brontosaurus, T-Rex); Noto Color Emoji is installed so they render in color
   - All nav bar text is size 13; Safe2Spend is green
-  - No vibe filter buttons (removed — `_vibe_filter` set exists but is always empty)
+  - **Vibe filter buttons** (🌟 Good / 🤷 Meh / 💔 Regret) sit to the right of "This Month" in the nav bar; toggle `_vibe_filter` set; active = color-highlighted, inactive = `C["border"]`
 - **Metrics panel** (collapsible): 2 rows of 4 KPI widgets
   - Row 1: `VibeBarsCard`, Payment Progress, Paid, Due
   - Row 2: Funded Not Paid, Funding Progress, Funded, Not Funded

@@ -392,6 +392,16 @@ class CombinedDashboard(ctk.CTkFrame):
                       command=self._app.navigate_to_today).pack(
             side="left", padx=(10, 0), pady=7)
 
+        for _emoji, _label, _color in [("🌟", "Good", C["green"]), ("🤷", "Meh", C["blue"]), ("💔", "Regret", C["red"])]:
+            _btn = ctk.CTkButton(
+                self._nav_bar, text=f"{_emoji} {_label}", width=84, height=28,
+                fg_color=C["border"], hover_color=C["card2"],
+                font=ctk.CTkFont(size=12),
+                command=lambda e=_emoji: self._toggle_vibe_filter(e),
+            )
+            _btn.pack(side="left", padx=(6, 0), pady=7)
+            self._vibe_btns[_emoji] = (_btn, _color)
+
         # Hide button packed right first so the middle frame fills remaining space
         self._toggle_btn = ctk.CTkButton(self._nav_bar, text="▲ Hide",
                                           width=80, height=28,
@@ -410,7 +420,7 @@ class CombinedDashboard(ctk.CTkFrame):
         self._funded_through_lbl.grid(row=0, column=0, pady=7)
 
         _animals = ["🦊","🦁","🦄","🦜","🦚","🦋","🐉","🦝","🐸","🐯","🦈","🦩","🦦","🦔","🦕","🦖"]
-        _picked  = " ".join(random.sample(_animals, 4))
+        _picked  = random.choice(_animals)
         ctk.CTkLabel(_mid, text=_picked, font=ctk.CTkFont(size=15)).grid(
             row=0, column=1, pady=7)
 

@@ -140,6 +140,29 @@ The tint makes matched rows immediately scannable without reading the Bill colum
 Bill column answers "linked to what?" without any extra interaction. This follows the
 existing row-coloring convention (deposits=green, negative balance=red).
 
+### Transaction Filter
+
+Three mutually exclusive toggle buttons in the toolbar, styled like the Dashboard vibe
+filter buttons (active = blue highlight, inactive = `C["card2"]`):
+
+```
+[ All ]  [ Linked ]  [ Unlinked ]
+```
+
+- **All** — show every transaction (default)
+- **Linked** — show only transactions with a bill attached (`transaction_id IS NOT NULL`)
+- **Unlinked** — show only transactions with no bill attached (`transaction_id IS NULL`)
+
+State stored as `_link_filter: str` (`"all"` / `"linked"` / `"unlinked"`) on `RegisterTab`.
+Clicking a button sets `_link_filter` and calls `refresh()`. Filtering is applied Python-side
+after fetching all transactions, before building table rows. Tinted backgrounds are unaffected
+— they are applied per-row based on link status regardless of the active filter.
+
+**Balance column caveat**: when the filter is not "All", the running Balance column reflects
+only the filtered subset, not the full account balance. Show a small note (e.g., `"Balance
+reflects filtered rows"`) below or beside the table whenever the filter is active, so the
+user isn't confused by the numbers not matching their bank statement.
+
 ---
 
 ## CSV Import Flow

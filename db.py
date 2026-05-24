@@ -10,6 +10,7 @@ import os
 import sqlite3
 import calendar
 from contextlib import contextmanager
+from datetime import date
 
 DEFAULT_DB = os.path.join(os.path.expanduser("~"), ".local", "share", "money-tracker", "money_tracker.db")
 
@@ -149,6 +150,54 @@ def init_db(db_path=DEFAULT_DB):
                 as_of_date       TEXT    NOT NULL DEFAULT ''
             )
         """)
+        try:
+            con.execute(
+                "ALTER TABLE register_transactions ADD COLUMN transaction_number TEXT NOT NULL DEFAULT ''"
+            )
+        except Exception:
+            pass
+        try:
+            con.execute(
+                "ALTER TABLE register_transactions ADD COLUMN memo TEXT NOT NULL DEFAULT ''"
+            )
+        except Exception:
+            pass
+        try:
+            con.execute(
+                "ALTER TABLE register_transactions ADD COLUMN check_number TEXT NOT NULL DEFAULT ''"
+            )
+        except Exception:
+            pass
+        try:
+            con.execute(
+                "ALTER TABLE register_transactions ADD COLUMN bank_balance REAL"
+            )
+        except Exception:
+            pass
+        try:
+            con.execute(
+                "ALTER TABLE register_transactions ADD COLUMN reviewed INTEGER NOT NULL DEFAULT 0"
+            )
+        except Exception:
+            pass
+        try:
+            con.execute(
+                "ALTER TABLE bill_instances ADD COLUMN transaction_id INTEGER REFERENCES register_transactions(id)"
+            )
+        except Exception:
+            pass
+        try:
+            con.execute(
+                "ALTER TABLE bill_instances ADD COLUMN soft_pay INTEGER NOT NULL DEFAULT 0"
+            )
+        except Exception:
+            pass
+        try:
+            con.execute(
+                "ALTER TABLE account_settings ADD COLUMN buffer REAL NOT NULL DEFAULT 0.0"
+            )
+        except Exception:
+            pass
 
 
 # ── Bill Definitions CRUD ─────────────────────────────────────────────────────
@@ -448,46 +497,37 @@ def get_all_debt_balances(db_path=DEFAULT_DB):
 
 def load_transactions(db_path=DEFAULT_DB):
     with _conn(db_path) as con:
-        rows = con.execute(
-            "SELECT * FROM register_transactions ORDER BY date, id"
-        ).fetchall()
+        rows = con.execute("""
+            SELECT rt.*,
+                   (SELECT bi.description FROM bill_instances bi
+                    WHERE bi.transaction_id = rt.id AND bi.deleted = 0 LIMIT 1) AS bill_description,
+                   (SELECT bi.id FROM bill_instances bi
+                    WHERE bi.transaction_id = rt.id AND bi.deleted = 0 LIMIT 1) AS bill_instance_id
+            FROM register_transactions rt
+            ORDER BY rt.date, rt.id
+        """).fetchall()
     return [_row_to_dict(r) for r in rows]
 
 
 def insert_transaction(txn, db_path=DEFAULT_DB):
     with _conn(db_path) as con:
         cur = con.execute("""
-            INSERT INTO register_transactions (date, description, type, amount, notes)
-            VALUES (?, ?, ?, ?, ?)
+            INSERT INTO register_transactions
+                (date, description, type, amount, notes, transaction_number,
+                 memo, check_number, bank_balance, reviewed)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0)
         """, (
             txn.get("date", ""),
             txn.get("description", ""),
             txn.get("type", "Payment"),
             txn.get("amount", 0.0),
             txn.get("notes", ""),
+            txn.get("transaction_number", ""),
+            txn.get("memo", ""),
+            txn.get("check_number", ""),
+            txn.get("bank_balance"),
         ))
         return cur.lastrowid
-
-
-def update_transaction(txn_id, txn, db_path=DEFAULT_DB):
-    with _conn(db_path) as con:
-        con.execute("""
-            UPDATE register_transactions
-            SET date=?, description=?, type=?, amount=?, notes=?
-            WHERE id=?
-        """, (
-            txn.get("date", ""),
-            txn.get("description", ""),
-            txn.get("type", "Payment"),
-            txn.get("amount", 0.0),
-            txn.get("notes", ""),
-            txn_id,
-        ))
-
-
-def delete_transaction(txn_id, db_path=DEFAULT_DB):
-    with _conn(db_path) as con:
-        con.execute("DELETE FROM register_transactions WHERE id=?", (txn_id,))
 
 
 def get_account_settings(db_path=DEFAULT_DB):
@@ -495,16 +535,133 @@ def get_account_settings(db_path=DEFAULT_DB):
         row = con.execute("SELECT * FROM account_settings WHERE id=1").fetchone()
     if row:
         return _row_to_dict(row)
-    return {"account_name": "", "starting_balance": 0.0, "as_of_date": ""}
+    return {"account_name": "", "starting_balance": 0.0, "as_of_date": "", "buffer": 0.0}
 
 
 def set_account_settings(settings, db_path=DEFAULT_DB):
     with _conn(db_path) as con:
         con.execute("""
-            INSERT OR REPLACE INTO account_settings (id, account_name, starting_balance, as_of_date)
-            VALUES (1, ?, ?, ?)
+            INSERT OR REPLACE INTO account_settings (id, account_name, starting_balance, as_of_date, buffer)
+            VALUES (1, ?, ?, ?, ?)
         """, (
             settings.get("account_name", ""),
             settings.get("starting_balance", 0.0),
             settings.get("as_of_date", ""),
+            settings.get("buffer", 0.0),
         ))
+
+
+# ── Register / Linking helpers ────────────────────────────────────────────────
+
+def toggle_reviewed(txn_id, db_path=DEFAULT_DB):
+    with _conn(db_path) as con:
+        con.execute(
+            "UPDATE register_transactions SET reviewed = CASE WHEN reviewed=1 THEN 0 ELSE 1 END WHERE id=?",
+            (txn_id,)
+        )
+
+
+def get_imported_transaction_numbers(db_path=DEFAULT_DB):
+    with _conn(db_path) as con:
+        rows = con.execute(
+            "SELECT transaction_number FROM register_transactions WHERE transaction_number != ''"
+        ).fetchall()
+    return {r[0] for r in rows}
+
+
+def get_transaction_count(db_path=DEFAULT_DB):
+    with _conn(db_path) as con:
+        return con.execute("SELECT COUNT(*) FROM register_transactions").fetchone()[0]
+
+
+def get_transaction_fingerprints(db_path=DEFAULT_DB):
+    """Return a set of (date, type, amount, description) tuples for rows without a transaction_number.
+    Used to deduplicate CSV rows that lack a bank-assigned transaction ID."""
+    with _conn(db_path) as con:
+        rows = con.execute(
+            "SELECT date, type, amount, description FROM register_transactions WHERE transaction_number = ''"
+        ).fetchall()
+    return {(r[0], r[1], r[2], r[3]) for r in rows}
+
+
+def load_linkable_instances(db_path=DEFAULT_DB):
+    """Return all unlinked, unpaid, non-deleted bill instances across all months."""
+    with _conn(db_path) as con:
+        rows = con.execute(
+            "SELECT * FROM bill_instances "
+            "WHERE transaction_id IS NULL AND status='Due' AND deleted=0 "
+            "ORDER BY month_key DESC, row_order"
+        ).fetchall()
+    return [_row_to_dict(r) for r in rows]
+
+
+def link_bill_to_transaction(instance_id, transaction_id, db_path=DEFAULT_DB):
+    """Link a bill instance to a transaction; auto-funds and auto-pays the bill."""
+    today = date.today().strftime("%m/%d/%Y")
+    with _conn(db_path) as con:
+        con.execute("""
+            UPDATE bill_instances
+            SET transaction_id=?, funded=1, status='Paid', date_paid=?, soft_pay=0
+            WHERE id=?
+        """, (transaction_id, today, instance_id))
+
+
+def unlink_transaction(instance_id, db_path=DEFAULT_DB):
+    """Remove bill link and revert instance to Due / unfunded."""
+    with _conn(db_path) as con:
+        con.execute("""
+            UPDATE bill_instances
+            SET transaction_id=NULL, status='Due', funded=0, date_paid=''
+            WHERE id=?
+        """, (instance_id,))
+
+
+def toggle_soft_pay(instance_id, db_path=DEFAULT_DB):
+    with _conn(db_path) as con:
+        con.execute(
+            "UPDATE bill_instances SET soft_pay = CASE WHEN soft_pay=1 THEN 0 ELSE 1 END WHERE id=?",
+            (instance_id,)
+        )
+
+
+def get_funded_not_paid_total(db_path=DEFAULT_DB):
+    """Sum of amount for all funded, unpaid, non-deleted bill instances across all months."""
+    with _conn(db_path) as con:
+        row = con.execute(
+            "SELECT COALESCE(SUM(amount), 0) FROM bill_instances "
+            "WHERE funded=1 AND status='Due' AND deleted=0"
+        ).fetchone()
+    return row[0] if row else 0.0
+
+
+def get_safe2spend(db_path=DEFAULT_DB):
+    """Compute Safe2Spend = current_balance - buffer - funded_not_yet_paid."""
+    with _conn(db_path) as con:
+        s = con.execute("SELECT * FROM account_settings WHERE id=1").fetchone()
+        buf = _row_to_dict(s).get("buffer", 0.0) if s else 0.0
+        row = con.execute("""
+            SELECT bank_balance FROM register_transactions
+            WHERE bank_balance IS NOT NULL
+            ORDER BY SUBSTR(date,7,4) DESC,
+                     SUBSTR(date,1,2) DESC,
+                     SUBSTR(date,4,2) DESC,
+                     id DESC
+            LIMIT 1
+        """).fetchone()
+        balance = row["bank_balance"] if row else 0.0
+        funded_not_paid = con.execute(
+            "SELECT COALESCE(SUM(amount), 0) FROM bill_instances "
+            "WHERE funded=1 AND status='Due' AND deleted=0"
+        ).fetchone()[0] or 0.0
+    return balance - buf - funded_not_paid
+
+
+def delete_all_transactions(db_path=DEFAULT_DB):
+    """Delete all transactions and revert any linked bill instances to unpaid/unfunded."""
+    with _conn(db_path) as con:
+        con.execute("""
+            UPDATE bill_instances
+            SET status='Due', transaction_id=NULL, funded=0, date_paid=''
+            WHERE transaction_id IS NOT NULL
+        """)
+        con.execute("DELETE FROM register_transactions")

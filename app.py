@@ -4,10 +4,12 @@ Two tabs: Bill Dashboard (summary + nav + bill grid), Bill Definitions (master b
 """
 
 import tkinter as tk
-from tkinter import ttk
+from tkinter import ttk, filedialog
 import customtkinter as ctk
+import csv
 import os
 import json
+import re
 import calendar
 from datetime import date
 
@@ -50,6 +52,8 @@ MONTH_NAMES   = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","No
 
 # ── Bills tab grid ────────────────────────────────────────────────────────────
 GRID_COLUMNS = [
+    ("Funded",     70),
+    ("Soft",       50),
     ("Vibe",       50),
     ("✓",          40),
     ("Status",     70),
@@ -59,7 +63,6 @@ GRID_COLUMNS = [
     ("Amount",     90),
     ("Frequency",  90),
     ("Date Paid",  90),
-    ("Funded",     70),
 ]
 LEFT_ALIGN = {"Status", "Expense", "Due Date", "Frequency", "Date Paid"}
 
@@ -91,14 +94,18 @@ DEBT_LEFT_ALIGN = {"Debt", "Payoff Date"}
 
 # ── Register tab grid ─────────────────────────────────────────────────────────
 REG_COLUMNS = [
+    ("Rev",         36),
+    ("Txn #",       80),
     ("Date",        90),
-    ("Description",260),
-    ("Payment",    105),
-    ("Deposit",    105),
-    ("Balance",    115),
-    ("Notes",      200),
+    ("Description",190),
+    ("Memo",       175),
+    ("Debit",       95),
+    ("Credit",      95),
+    ("Balance",    110),
+    ("Check #",     72),
+    ("Bill",       160),
 ]
-REG_LEFT_ALIGN = {"Date", "Description", "Notes"}
+REG_LEFT_ALIGN = {"Date", "Description", "Memo", "Bill"}
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -149,6 +156,8 @@ def _load_and_annotate(month_key):
 
 def _merge_row(inst):
     return (
+        "✓" if inst.get("funded") else "",
+        "💸" if inst.get("soft_pay") else "",
         _vibe_emoji(inst.get("vibe", "")),
         "✓" if inst.get("status") == "Paid" else "",
         inst.get("status", ""),
@@ -158,7 +167,6 @@ def _merge_row(inst):
         _fmt(inst.get("amount")),
         inst.get("frequency", ""),
         inst.get("date_paid", ""),
-        "✓" if inst.get("funded") else "",
     )
 
 
@@ -402,6 +410,16 @@ class CombinedDashboard(ctk.CTkFrame):
                                           command=self._toggle_metrics)
         self._toggle_btn.pack(side="right", padx=(0, 10), pady=7)
 
+        self._dash_s2s_label = ctk.CTkLabel(
+            self._nav_bar, text="Safe2Spend: —",
+            font=ctk.CTkFont(size=13), text_color=C["green"])
+        self._dash_s2s_label.pack(side="right", padx=(0, 16), pady=7)
+
+        self._dash_buffer_label = ctk.CTkLabel(
+            self._nav_bar, text="Buffer: $0.00",
+            font=ctk.CTkFont(size=13), text_color=C["muted"])
+        self._dash_buffer_label.pack(side="right", padx=(0, 8), pady=7)
+
         self._metrics_panel = ctk.CTkFrame(self, fg_color="transparent")
         self._metrics_panel.pack(fill="x")
 
@@ -409,10 +427,10 @@ class CombinedDashboard(ctk.CTkFrame):
         self._toolbar.pack(fill="x")
         self._toolbar.pack_propagate(False)
         for label, cmd, width in [
-            ("All Funded/Unfunded", self._mark_all_funded_unfunded, 145),
-            ("All Paid/Unpaid",     self._mark_all_paid_unpaid,     128),
+            ("All Funded",   self._mark_all_funded,   100),
+            ("All Unfunded", self._mark_all_unfunded, 108),
             ("Funded/Unfunded",     self._toggle_funded,            120),
-            ("Paid/Unpaid",         self._toggle_paid,              110),
+            ("💸 Soft Pay",          self._toggle_soft_pay,          100),
             ("+ Add Bill",          self._add,                      110),
             ("✎ Edit",              self._edit,                      80),
             ("🗑 Delete",            self._delete,                    90),
@@ -576,6 +594,15 @@ class CombinedDashboard(ctk.CTkFrame):
 
         month_total = summary["total_due"] + summary["total_paid"]
         self._month_total_lbl.configure(text=f"{summary['bill_count']} Bills In {calendar.month_name[month]}:  ${month_total:,.2f}")
+
+        acct = db.get_account_settings(DB_PATH)
+        buf = acct.get("buffer", 0.0)
+        self._dash_buffer_label.configure(text=f"Buffer: ${buf:,.2f}")
+
+        s2s = db.get_safe2spend(DB_PATH)
+        s2s_color = C["green"] if s2s >= 0 else C["red"]
+        s2s_str = f"${s2s:,.2f}" if s2s >= 0 else f"-${abs(s2s):,.2f}"
+        self._dash_s2s_label.configure(text=f"Safe2Spend: {s2s_str}", text_color=s2s_color)
 
         if self._vibe_filter:
             display = [b for b in annotated
@@ -745,31 +772,12 @@ class CombinedDashboard(ctk.CTkFrame):
         if inst:
             InstDialog(self, self._app, mode="edit", inst=inst)
 
-    def _toggle_paid(self):
+    def _toggle_soft_pay(self):
         if not self._selected_id:
-            self._app.flash("Select a bill to toggle paid status.")
+            self._app.flash("Select a bill to toggle soft pay.")
             return
-        annotated, _ = _load_and_annotate(self._app.current_month())
-        inst = next((b for b in annotated if b["id"] == self._selected_id), None)
-        if not inst:
-            return
-        if inst.get("status") == "Paid":
-            updated = dict(inst)
-            updated["status"]    = "Due"
-            updated["date_paid"] = ""
-            db.update_instance(self._selected_id, updated, DB_PATH)
-            self._app.refresh()
-            self._app.flash(f"Marked unpaid: {inst.get('description', '')[:40]}")
-        else:
-            if not inst.get("funded"):
-                self._app.flash("Bill must be funded before it can be marked paid.")
-                return
-            updated = dict(inst)
-            updated["status"]    = "Paid"
-            updated["date_paid"] = date.today().strftime("%m/%d/%Y")
-            db.update_instance(self._selected_id, updated, DB_PATH)
-            self._app.refresh()
-            self._app.flash(f"Marked paid: {inst.get('description', '')[:40]}")
+        db.toggle_soft_pay(self._selected_id, DB_PATH)
+        self._app.refresh()
 
     def _toggle_funded(self):
         if not self._selected_id:
@@ -779,12 +787,27 @@ class CombinedDashboard(ctk.CTkFrame):
         inst = next((b for b in annotated if b["id"] == self._selected_id), None)
         if not inst:
             return
-        new_val = 0 if inst.get("funded") else 1
-        updated = dict(inst)
-        updated["funded"] = new_val
-        db.update_instance(self._selected_id, updated, DB_PATH)
-        self._app.refresh()
-        self._app.flash(f"Marked {'funded' if new_val else 'not funded'}: {inst.get('description', '')[:40]}")
+        if inst.get("funded"):
+            updated = dict(inst)
+            updated["funded"] = 0
+            db.update_instance(self._selected_id, updated, DB_PATH)
+            self._app.refresh()
+            self._app.flash(f"Marked not funded: {inst.get('description', '')[:40]}")
+        else:
+            amount = inst.get("amount", 0.0) or 0.0
+            if amount > 0:
+                s2s = db.get_safe2spend(DB_PATH)
+                if amount > s2s:
+                    self._app.flash(
+                        f"Cannot fund {inst.get('description', '')[:28]} ({_fmt(amount)}) — "
+                        f"Safe2Spend is only {_fmt(s2s)}."
+                    )
+                    return
+            updated = dict(inst)
+            updated["funded"] = 1
+            db.update_instance(self._selected_id, updated, DB_PATH)
+            self._app.refresh()
+            self._app.flash(f"Marked funded: {inst.get('description', '')[:40]}")
 
     def _delete(self):
         if not self._selected_id:
@@ -802,38 +825,41 @@ class CombinedDashboard(ctk.CTkFrame):
                     if _vibe_emoji(b.get("vibe", "")) in self._vibe_filter]
         return annotated
 
-    def _mark_all_funded_unfunded(self):
+    def _mark_all_funded(self):
         bills = self._visible_bills()
-        if not bills:
-            self._app.flash("No bills to update.")
+        candidates = [b for b in bills if not b.get("funded")]
+        if not candidates:
+            self._app.flash("All visible bills are already funded.")
             return
-        all_funded = all(b.get("funded") for b in bills)
-        new_val = 0 if all_funded else 1
-        for inst in bills:
+        total = sum(b.get("amount", 0) or 0 for b in candidates)
+        if total > 0:
+            s2s = db.get_safe2spend(DB_PATH)
+            if total > s2s:
+                self._app.flash(
+                    f"Cannot fund {len(candidates)} bills ({_fmt(total)} total) — "
+                    f"Safe2Spend is only {_fmt(s2s)}."
+                )
+                return
+        for inst in candidates:
             updated = dict(inst)
-            updated["funded"] = new_val
+            updated["funded"] = 1
             db.update_instance(inst["id"], updated, DB_PATH)
         self._app.refresh()
-        self._app.flash(f"All bills marked {'unfunded' if all_funded else 'funded'}.")
+        self._app.flash(f"Marked {len(candidates)} bills funded.")
 
-    def _mark_all_paid_unpaid(self):
+    def _mark_all_unfunded(self):
         bills = self._visible_bills()
-        if not bills:
-            self._app.flash("No bills to update.")
+        candidates = [b for b in bills if b.get("funded")]
+        if not candidates:
+            self._app.flash("No funded bills to unmark.")
             return
-        all_paid = all(b.get("status") == "Paid" for b in bills)
-        if not all_paid and not all(b.get("funded") for b in bills):
-            self._app.flash("All bills must be funded before marking all as paid.")
-            return
-        new_status = "Due" if all_paid else "Paid"
-        new_date   = date.today().strftime("%m/%d/%Y") if new_status == "Paid" else ""
-        for inst in bills:
+        for inst in candidates:
             updated = dict(inst)
-            updated["status"]    = new_status
-            updated["date_paid"] = new_date
+            updated["funded"] = 0
             db.update_instance(inst["id"], updated, DB_PATH)
         self._app.refresh()
-        self._app.flash(f"All bills marked {'unpaid' if all_paid else 'paid'}.")
+        self._app.flash(f"Marked {len(candidates)} bills unfunded.")
+
 
 
 # ── Definitions Tab ───────────────────────────────────────────────────────────
@@ -1376,41 +1402,119 @@ class RegisterTab(ctk.CTkFrame):
         self._sort_col = "Date"
         self._sort_asc = True
         self._transactions = []
-        self._balances = {}
-        self._acct_settings = {"account_name": "", "starting_balance": 0.0, "as_of_date": ""}
+        self._acct_settings = {"account_name": "", "starting_balance": 0.0,
+                               "as_of_date": "", "buffer": 0.0}
+        self._link_filter = "all"
+        self._link_filter_btns = {}
+        self._review_filter = "all"
+        self._review_filter_btns = {}
+        self._current_balance = 0.0
+        self._last_import_msg = ""
+        self._search_var = tk.StringVar()
+        self._search_var.trace_add("write", lambda *_: self._populate_tree())
         self._build()
 
     def _build(self):
-        # Account info bar
+        # ── Account info bar ─────────────────────────────────────────
         info_bar = ctk.CTkFrame(self, height=44, corner_radius=0, fg_color=C["card"])
         info_bar.pack(fill="x")
         info_bar.pack_propagate(False)
+
         self._acct_name_label = ctk.CTkLabel(
             info_bar, text="No account configured",
             font=ctk.CTkFont(size=13, weight="bold"), text_color=C["heading"])
-        self._acct_name_label.pack(side="left", padx=16)
+        self._acct_name_label.pack(side="left", padx=(16, 0))
+
         self._balance_label = ctk.CTkLabel(
             info_bar, text="Balance: —",
             font=ctk.CTkFont(size=13), text_color=C["green"])
-        self._balance_label.pack(side="left", padx=24)
+        self._balance_label.pack(side="left", padx=16)
+
+        buf_frame = ctk.CTkFrame(info_bar, fg_color="transparent")
+        buf_frame.pack(side="left", padx=4)
+        ctk.CTkLabel(buf_frame, text="Buffer:",
+                     font=ctk.CTkFont(size=12), text_color=C["muted"]).pack(side="left")
+        self._buf_var = tk.StringVar()
+        buf_entry = ctk.CTkEntry(buf_frame, textvariable=self._buf_var, width=82, height=28)
+        buf_entry.pack(side="left", padx=(4, 0))
+        buf_entry._entry.bind("<Return>", self._save_buffer)
+        ctk.CTkButton(buf_frame, text="Set", width=36, height=28,
+                      command=self._save_buffer).pack(side="left", padx=(4, 0))
+
+        self._safe2spend_label = ctk.CTkLabel(
+            info_bar, text="Safe2Spend: —",
+            font=ctk.CTkFont(size=13), text_color=C["green"])
+        self._safe2spend_label.pack(side="left", padx=16)
+
+        self._buffer_display_label = ctk.CTkLabel(
+            info_bar, text="Buffer: $0.00",
+            font=ctk.CTkFont(size=13), text_color=C["muted"])
+        self._buffer_display_label.pack(side="left", padx=0)
+
+        self._txn_count_label = ctk.CTkLabel(
+            info_bar, text="",
+            font=ctk.CTkFont(size=12), text_color=C["muted"])
+        self._txn_count_label.pack(side="left", padx=(20, 0))
+
+        self._showing_txns_label = ctk.CTkLabel(
+            info_bar, text="",
+            font=ctk.CTkFont(size=12), text_color=C["muted"])
+        self._showing_txns_label.pack(side="left", padx=(12, 0))
+
+        self._last_import_label = ctk.CTkLabel(
+            info_bar, text="",
+            font=ctk.CTkFont(size=12), text_color=C["muted"])
+        self._last_import_label.pack(side="left", padx=(12, 0))
+
         ctk.CTkButton(info_bar, text="⚙ Account Settings", width=155, height=30,
                       command=self._account_settings).pack(side="right", padx=12, pady=7)
 
-        # Toolbar
+        # ── Toolbar ──────────────────────────────────────────────────
         sub = ctk.CTkFrame(self, height=44, corner_radius=0, fg_color=C["card2"])
         sub.pack(fill="x")
         sub.pack_propagate(False)
-        for label, cmd in [
-            ("+ Add",    self._add),
-            ("✎ Edit",   self._edit),
-            ("🗑 Delete", self._delete),
-        ]:
-            ctk.CTkButton(sub, text=label, width=110, height=30,
-                          command=cmd).pack(side="right", padx=6, pady=7)
 
-        # Table
-        container = tk.Frame(self, bg="#1a1a2e")
-        container.pack(fill="both", expand=True)
+        # Right side: filter button groups in a frame so they stay ordered
+        filter_frame = ctk.CTkFrame(sub, fg_color="transparent")
+        filter_frame.pack(side="right", padx=(0, 6), pady=7)
+
+        for label, val in [("All", "all"), ("Linked", "linked"), ("Unlinked", "unlinked")]:
+            btn = ctk.CTkButton(filter_frame, text=label, width=78, height=30,
+                                fg_color=C["blue"] if val == "all" else C["border"],
+                                hover_color=C["card2"],
+                                command=lambda v=val: self._set_link_filter(v))
+            btn.pack(side="left", padx=2)
+            self._link_filter_btns[val] = btn
+
+        tk.Frame(filter_frame, width=1, bg=C["border"]).pack(
+            side="left", fill="y", padx=8, pady=4)
+
+        for label, val in [("All", "all"), ("Reviewed", "reviewed"), ("Unreviewed", "unreviewed")]:
+            btn = ctk.CTkButton(filter_frame, text=label, width=88, height=30,
+                                fg_color=C["blue"] if val == "all" else C["border"],
+                                hover_color=C["card2"],
+                                command=lambda v=val: self._set_review_filter(v))
+            btn.pack(side="left", padx=2)
+            self._review_filter_btns[val] = btn
+
+        # Left side: action buttons + search
+        for label, cmd, width in [
+            ("⬆ Import CSV",   self._import_csv,             115),
+            ("🔗 Link to Bill", self._link_to_bill,           120),
+            ("Unlink",          self._unlink_transaction,      72),
+            ("✓ Review",        self._toggle_reviewed,         88),
+            ("⚠ Delete All",    self._delete_all_transactions, 100),
+        ]:
+            ctk.CTkButton(sub, text=label, width=width, height=30,
+                          command=cmd).pack(side="left", padx=6, pady=7)
+
+        ctk.CTkEntry(sub, textvariable=self._search_var,
+                     placeholder_text="🔍  Search...",
+                     width=180, height=30).pack(side="left", padx=(8, 0), pady=7)
+
+        # ── Table ────────────────────────────────────────────────────
+        self._table_container = tk.Frame(self, bg="#1a1a2e")
+        self._table_container.pack(fill="both", expand=True)
 
         style = ttk.Style()
         style.configure("Reg.Treeview",
@@ -1425,11 +1529,11 @@ class RegisterTab(ctk.CTkFrame):
                   foreground=[("selected", "#ffffff")])
 
         col_ids = [c[0] for c in REG_COLUMNS]
-        vsb = ttk.Scrollbar(container, orient="vertical")
-        hsb = ttk.Scrollbar(container, orient="horizontal")
+        vsb = ttk.Scrollbar(self._table_container, orient="vertical")
+        hsb = ttk.Scrollbar(self._table_container, orient="horizontal")
         vsb.pack(side="right", fill="y")
         hsb.pack(side="bottom", fill="x")
-        self._tree = ttk.Treeview(container, columns=col_ids, show="headings",
+        self._tree = ttk.Treeview(self._table_container, columns=col_ids, show="headings",
                                    style="Reg.Treeview",
                                    yscrollcommand=vsb.set,
                                    xscrollcommand=hsb.set,
@@ -1443,13 +1547,13 @@ class RegisterTab(ctk.CTkFrame):
             self._tree.heading(col, text=col, command=lambda c=col: self._sort_by(c))
             self._tree.column(col, width=width, minwidth=40, anchor=anchor, stretch=False)
 
-        self._tree.tag_configure("deposit", foreground=C["green"])
-        self._tree.tag_configure("payment", foreground="#e0e0f0")
+        self._tree.tag_configure("deposit",      foreground=C["green"])
+        self._tree.tag_configure("payment",      foreground="#e0e0f0")
         self._tree.tag_configure("negative_bal", foreground=C["red"])
+        self._tree.tag_configure("linked",       background="#1e2a3e", foreground="#7dd3fc")
+        self._tree.tag_configure("reviewed",     foreground="#888899")
 
         self._tree.bind("<<TreeviewSelect>>", self._on_select)
-        self._tree.bind("<Double-1>", lambda _: self._edit())
-
         self._apply_sort_arrow()
 
     def _apply_sort_arrow(self):
@@ -1458,64 +1562,112 @@ class RegisterTab(ctk.CTkFrame):
         arrow = " ▲" if self._sort_asc else " ▼"
         self._tree.heading(self._sort_col, text=self._sort_col + arrow)
 
-    def _compute_running_balances(self, transactions, starting_balance):
+    def _latest_bank_balance(self, transactions):
+        """Return the bank's balance from the most recently dated transaction."""
+        txns_with_bal = [t for t in transactions if t.get("bank_balance") is not None]
+        if not txns_with_bal:
+            return 0.0
         def date_key(t):
             d = t.get("date", "")
             try:
                 m, day, y = d.split("/")
                 return (int(y), int(m), int(day), t["id"])
             except Exception:
-                return (9999, 99, 99, t["id"])
-        sorted_txns = sorted(transactions, key=date_key)
-        balances = {}
-        running = starting_balance
-        for txn in sorted_txns:
-            if txn["type"] == "Deposit":
-                running += txn["amount"]
-            else:
-                running -= txn["amount"]
-            balances[txn["id"]] = running
-        return balances
+                return (0, 0, 0, t["id"])
+        return max(txns_with_bal, key=date_key)["bank_balance"]
 
     def refresh(self, transactions, acct_settings):
         self._transactions = transactions
         self._acct_settings = acct_settings
-        starting = acct_settings.get("starting_balance", 0.0)
-        self._balances = self._compute_running_balances(transactions, starting)
-
         name = acct_settings.get("account_name", "").strip()
         self._acct_name_label.configure(text=name if name else "No account configured")
 
-        if self._balances:
-            # Current balance = balance after last transaction (by date)
-            def date_key(t):
-                d = t.get("date", "")
-                try:
-                    m, day, y = d.split("/")
-                    return (int(y), int(m), int(day), t["id"])
-                except Exception:
-                    return (9999, 99, 99, t["id"])
-            last_txn = max(transactions, key=date_key)
-            cur_bal = self._balances[last_txn["id"]]
-        else:
-            cur_bal = starting
+        buf = acct_settings.get("buffer", 0.0)
+        self._buf_var.set(f"{buf:.2f}")
 
-        bal_color = C["green"] if cur_bal >= 0 else C["red"]
-        bal_str = f"${cur_bal:,.2f}" if cur_bal >= 0 else f"-${abs(cur_bal):,.2f}"
+        self._current_balance = self._latest_bank_balance(transactions)
+        bal_color = C["green"] if self._current_balance >= 0 else C["red"]
+        bal_str = (f"${self._current_balance:,.2f}"
+                   if self._current_balance >= 0
+                   else f"-${abs(self._current_balance):,.2f}")
         self._balance_label.configure(text=f"Balance: {bal_str}", text_color=bal_color)
 
+        funded_not_paid = db.get_funded_not_paid_total(DB_PATH)
+        s2s = self._current_balance - buf - funded_not_paid
+        s2s_color = C["green"] if s2s >= 0 else C["red"]
+        s2s_str = f"${s2s:,.2f}" if s2s >= 0 else f"-${abs(s2s):,.2f}"
+        self._safe2spend_label.configure(text=f"Safe2Spend: {s2s_str}", text_color=s2s_color)
+        self._buffer_display_label.configure(text=f"  Buffer: ${buf:,.2f}")
+
+        txn_count = db.get_transaction_count(DB_PATH)
+        self._txn_count_label.configure(text=f"Cumulative Txns: {txn_count:,}")
+        self._last_import_label.configure(text=self._last_import_msg)
+
         self._populate_tree()
+
+    def _set_link_filter(self, val):
+        self._link_filter = val
+        for v, btn in self._link_filter_btns.items():
+            btn.configure(fg_color=C["blue"] if v == val else C["border"])
+        self._populate_tree()
+
+    def _set_review_filter(self, val):
+        self._review_filter = val
+        for v, btn in self._review_filter_btns.items():
+            btn.configure(fg_color=C["blue"] if v == val else C["border"])
+        self._populate_tree()
+
+    def _toggle_reviewed(self):
+        if not self._selected_id:
+            self._app.flash("Select a transaction to toggle reviewed status.")
+            return
+        db.toggle_reviewed(self._selected_id, DB_PATH)
+        self._app.refresh()
 
     def _populate_tree(self):
         self._tree.delete(*self._tree.get_children())
         self._selected_id = None
-        for txn in self._transactions:
-            bal = self._balances.get(txn["id"], self._acct_settings.get("starting_balance", 0.0))
-            tag = "deposit" if txn["type"] == "Deposit" else "payment"
-            if bal < 0:
+
+        txns = self._transactions
+        if self._link_filter == "linked":
+            txns = [t for t in txns if t.get("bill_description")]
+        elif self._link_filter == "unlinked":
+            txns = [t for t in txns if not t.get("bill_description")]
+
+        if self._review_filter == "reviewed":
+            txns = [t for t in txns if t.get("reviewed")]
+        elif self._review_filter == "unreviewed":
+            txns = [t for t in txns if not t.get("reviewed")]
+
+        q = self._search_var.get().strip().lower()
+        if q:
+            def _matches(t):
+                if q in t.get("description", "").lower():
+                    return True
+                if q in t.get("memo", "").lower():
+                    return True
+                if q in f"{t.get('amount', 0):,.2f}":
+                    return True
+                return False
+            txns = [t for t in txns if _matches(t)]
+
+        for txn in txns:
+            bb = txn.get("bank_balance")
+            is_linked = bool(txn.get("bill_description"))
+            is_reviewed = bool(txn.get("reviewed"))
+            if bb is not None and bb < 0:
                 tag = "negative_bal"
+            elif is_linked:
+                tag = "linked"
+            elif is_reviewed:
+                tag = "reviewed"
+            elif txn["type"] == "Deposit":
+                tag = "deposit"
+            else:
+                tag = "payment"
             self._tree.insert("", "end", iid=str(txn["id"]),
-                              values=_merge_reg_row(txn, bal), tags=(tag,))
+                              values=_merge_reg_row(txn), tags=(tag,))
+        self._showing_txns_label.configure(text=f"Showing Txns: {len(txns):,}")
         self._apply_sort()
 
     def _sort_by(self, col):
@@ -1544,60 +1696,173 @@ class RegisterTab(ctk.CTkFrame):
                 return (int(y), int(m), int(d))
             except Exception:
                 return (9999, 99, 99)
-        if col in ("Payment", "Deposit"):
-            if not val:
-                return 0.0
+        if col in ("Debit", "Credit", "Balance"):
             try:
-                return float(val.replace("$", "").replace(",", ""))
+                return float(val.replace("$", "").replace(",", "").replace("-", "")) if val else 0.0
             except ValueError:
                 return 0.0
-        if col == "Balance":
-            try:
-                return float(val.replace("$", "").replace(",", ""))
-            except ValueError:
-                return 0.0
-        return val.lower()
+        return val.lower() if val else ""
 
     def _on_select(self, _=None):
         sel = self._tree.selection()
         self._selected_id = int(sel[0]) if sel else None
 
-    def _add(self):
-        TransactionDialog(self, self._app, mode="add")
+    def _save_buffer(self, _=None):
+        try:
+            buf = abs(float(self._buf_var.get().replace("$", "").replace(",", "")))
+        except ValueError:
+            buf = 0.0
+        if buf == self._acct_settings.get("buffer", 0.0):
+            return
+        settings = dict(self._acct_settings)
+        settings["buffer"] = buf
+        db.set_account_settings(settings, DB_PATH)
+        self._app.refresh()
 
-    def _edit(self):
+    def _import_csv(self):
+        path = filedialog.askopenfilename(
+            title="Import Bank CSV",
+            filetypes=[("CSV files", "*.csv"), ("Text files", "*.txt"), ("All files", "*.*")]
+        )
+        if not path:
+            return
+        try:
+            rows = parse_bank_csv(path)
+        except Exception as e:
+            self._app.flash(f"Error reading CSV: {e}")
+            return
+        existing_nums = db.get_imported_transaction_numbers(DB_PATH)
+        existing_fps  = db.get_transaction_fingerprints(DB_PATH)
+        new_count = 0
+        dup_count = 0
+        for row in rows:
+            txn_num = row.get("transaction_number", "")
+            if txn_num:
+                if txn_num in existing_nums:
+                    dup_count += 1
+                    continue
+                db.insert_transaction(row, DB_PATH)
+                existing_nums.add(txn_num)
+            else:
+                fp = (row.get("date", ""), row.get("type", ""), row.get("amount", 0.0), row.get("description", ""))
+                if fp in existing_fps:
+                    dup_count += 1
+                    continue
+                db.insert_transaction(row, DB_PATH)
+                existing_fps.add(fp)
+            new_count += 1
+        self._last_import_msg = f"Last Import: {new_count} new"
+        self._app.refresh()
+        self._app.flash(f"Imported {new_count} transactions ({dup_count} duplicates skipped)")
+
+    def _link_to_bill(self):
         if not self._selected_id:
-            self._app.flash("Select a transaction to edit.")
+            self._app.flash("Select a transaction to link to a bill.")
             return
         txn = next((t for t in self._transactions if t["id"] == self._selected_id), None)
-        if txn:
-            TransactionDialog(self, self._app, mode="edit", txn=txn)
+        if not txn:
+            return
+        if txn["type"] != "Payment":
+            self._app.flash("Only Payment transactions can be linked to bills.")
+            return
+        if txn.get("bill_description"):
+            self._app.flash("This transaction is already linked to a bill.")
+            return
+        LinkBillDialog(self, self._app, txn)
 
-    def _delete(self):
+    def _unlink_transaction(self):
         if not self._selected_id:
-            self._app.flash("Select a transaction to delete.")
+            self._app.flash("Select a transaction to unlink.")
+            return
+        txn = next((t for t in self._transactions if t["id"] == self._selected_id), None)
+        if not txn or not txn.get("bill_instance_id"):
+            self._app.flash("Selected transaction has no linked bill.")
+            return
+        bill_desc  = txn.get("bill_description", "this bill")
+        instance_id = txn["bill_instance_id"]
+        ConfirmDialog(self, self._app,
+                      f"Unlink from \"{bill_desc}\"?\nThe bill will revert to unpaid.",
+                      lambda: (db.unlink_transaction(instance_id, DB_PATH),
+                               self._app.refresh()))
+
+    def _delete_all_transactions(self):
+        count = len(self._transactions)
+        if count == 0:
+            self._app.flash("No transactions to delete.")
             return
         ConfirmDialog(self, self._app,
-                      "Delete this transaction?\nThis cannot be undone.",
-                      lambda: (db.delete_transaction(self._selected_id, DB_PATH),
+                      f"Delete ALL {count} transactions and revert\n"
+                      f"any linked bills to unpaid?\nThis cannot be undone.",
+                      lambda: (db.delete_all_transactions(DB_PATH),
                                self._app.refresh()))
 
     def _account_settings(self):
         AccountSettingsDialog(self, self._app, self._acct_settings)
 
 
-def _merge_reg_row(txn, balance):
-    payment = f"${txn['amount']:,.2f}" if txn["type"] == "Payment" else ""
-    deposit  = f"${txn['amount']:,.2f}" if txn["type"] == "Deposit"  else ""
-    bal_str  = f"${balance:,.2f}" if balance >= 0 else f"-${abs(balance):,.2f}"
+def _merge_reg_row(txn):
+    debit   = f"${txn['amount']:,.2f}" if txn["type"] == "Payment" else ""
+    credit  = f"${txn['amount']:,.2f}" if txn["type"] == "Deposit"  else ""
+    bb      = txn.get("bank_balance")
+    bal_str = (f"${bb:,.2f}" if bb >= 0 else f"-${abs(bb):,.2f}") if bb is not None else ""
     return (
+        "✓" if txn.get("reviewed") else "",
+        txn.get("transaction_number", ""),
         txn.get("date", ""),
         txn.get("description", ""),
-        payment,
-        deposit,
+        txn.get("memo", ""),
+        debit,
+        credit,
         bal_str,
-        txn.get("notes", ""),
+        txn.get("check_number", ""),
+        txn.get("bill_description", "") or "",
     )
+
+
+def parse_bank_csv(path):
+    """Parse bank CSV export into a list of transaction dicts."""
+    rows = []
+    with open(path, newline="", encoding="utf-8-sig") as f:
+        reader = csv.DictReader(f)
+        for raw in reader:
+            debit  = raw.get("Amount Debit",  "").strip()
+            credit = raw.get("Amount Credit", "").strip()
+            if not debit and not credit:
+                continue
+            if debit:
+                try:
+                    amount = abs(float(debit.replace("$", "").replace(",", "")))
+                    txn_type = "Payment"
+                except ValueError:
+                    continue
+            else:
+                try:
+                    amount = abs(float(credit.replace("$", "").replace(",", "")))
+                    txn_type = "Deposit"
+                except ValueError:
+                    continue
+            if amount == 0:
+                continue
+            desc      = re.sub(r"(?i)^(?:debit|credit)\s+", "", raw.get("Description", "").strip())
+            memo      = raw.get("Memo", "").strip()
+            check_num = raw.get("Check Number", "").strip()
+            bb_str    = raw.get("Balance", "").strip().replace("$", "").replace(",", "")
+            try:
+                bank_bal = float(bb_str) if bb_str else None
+            except ValueError:
+                bank_bal = None
+            rows.append({
+                "date":               raw.get("Date", "").strip(),
+                "description":        desc,
+                "type":               txn_type,
+                "amount":             amount,
+                "memo":               memo,
+                "check_number":       check_num,
+                "bank_balance":       bank_bal,
+                "notes":              "",
+                "transaction_number": raw.get("Transaction Number", "").strip().strip('"'),
+            })
+    return rows
 
 
 # ── Balance Update Dialog ─────────────────────────────────────────────────────
@@ -2200,9 +2465,10 @@ class AccountSettingsDialog(ctk.CTkToplevel):
     def __init__(self, parent, app, current_settings):
         super().__init__(parent)
         self._app = app
+        self._current_settings = current_settings
 
         self.title("Account Settings")
-        self.geometry("400x270")
+        self.geometry("380x150")
         self.resizable(False, False)
         self.after(100, self.grab_set)
         self.after(100, self.focus_set)
@@ -2212,21 +2478,12 @@ class AccountSettingsDialog(ctk.CTkToplevel):
             padx=16, pady=(14, 6), anchor="w")
 
         self._vars = {}
-        for label, default in [
-            ("Account Name",     current_settings.get("account_name", "")),
-            ("Starting Balance", str(current_settings.get("starting_balance", "0.00"))),
-            ("As of Date",       current_settings.get("as_of_date", "")),
-        ]:
-            row = ctk.CTkFrame(self, fg_color="transparent")
-            row.pack(fill="x", padx=16, pady=5)
-            ctk.CTkLabel(row, text=label, width=130, anchor="w").pack(side="left")
-            var = tk.StringVar(value=str(default))
-            ctk.CTkEntry(row, textvariable=var, width=220).pack(side="left")
-            self._vars[label] = var
-
-        ctk.CTkLabel(self, text="As of Date format: MM/DD/YYYY  (optional reference only)",
-                     font=ctk.CTkFont(size=10), text_color=C["muted"]).pack(
-            padx=16, anchor="w")
+        row = ctk.CTkFrame(self, fg_color="transparent")
+        row.pack(fill="x", padx=16, pady=5)
+        ctk.CTkLabel(row, text="Account Name", width=130, anchor="w").pack(side="left")
+        var = tk.StringVar(value=current_settings.get("account_name", ""))
+        ctk.CTkEntry(row, textvariable=var, width=220).pack(side="left")
+        self._vars["Account Name"] = var
 
         self._err = ctk.CTkLabel(self, text="", text_color=C["red"],
                                  font=ctk.CTkFont(size=11))
@@ -2242,16 +2499,104 @@ class AccountSettingsDialog(ctk.CTkToplevel):
 
     def _save(self):
         name = self._vars["Account Name"].get().strip()
-        try:
-            bal = float(self._vars["Starting Balance"].get().replace("$", "").replace(",", ""))
-        except ValueError:
-            self._err.configure(text="Starting Balance must be a number.")
-            return
         db.set_account_settings({
             "account_name":     name,
-            "starting_balance": bal,
-            "as_of_date":       self._vars["As of Date"].get().strip(),
+            "starting_balance": 0.0,
+            "as_of_date":       "",
+            "buffer":           self._current_settings.get("buffer", 0.0),
         }, DB_PATH)
+        self.destroy()
+        self._app.refresh()
+
+
+# ── Link Bill Dialog ──────────────────────────────────────────────────────────
+
+class LinkBillDialog(ctk.CTkToplevel):
+    def __init__(self, parent, app, txn):
+        super().__init__(parent)
+        self._app = app
+        self._txn = txn
+        self._selected_instance_id = None
+
+        self.title("Link Transaction to Bill")
+        self.geometry("600x420")
+        self.resizable(True, True)
+        self.after(100, self.grab_set)
+        self.after(100, self.focus_set)
+
+        hdr = ctk.CTkFrame(self, fg_color=C["card2"], corner_radius=0)
+        hdr.pack(fill="x")
+        ctk.CTkLabel(hdr, text="Transaction:",
+                     font=ctk.CTkFont(size=12, weight="bold"),
+                     text_color=C["muted"]).pack(side="left", padx=(12, 6), pady=8)
+        ctk.CTkLabel(hdr,
+                     text=f"{txn['date']}  |  {txn['description']}  |  ${txn['amount']:,.2f}",
+                     font=ctk.CTkFont(size=12), text_color=C["text"]).pack(side="left")
+
+        container = tk.Frame(self, bg="#1a1a2e")
+        container.pack(fill="both", expand=True, padx=8, pady=(8, 0))
+
+        cols = [("Month", 90), ("Description", 240), ("Amount", 95),
+                ("Due Date", 95), ("Funded?", 65)]
+        style = ttk.Style()
+        style.configure("Link.Treeview",
+                        background="#2b2b3b", foreground="#e0e0e0",
+                        fieldbackground="#2b2b3b", rowheight=26,
+                        font=("Consolas", 11))
+        style.configure("Link.Treeview.Heading",
+                        background="#1f1f2e", foreground="#8ab4f8",
+                        font=("Helvetica", 11, "bold"), relief="flat")
+        style.map("Link.Treeview",
+                  background=[("selected", "#3a5a8a")],
+                  foreground=[("selected", "#ffffff")])
+
+        vsb = ttk.Scrollbar(container, orient="vertical")
+        vsb.pack(side="right", fill="y")
+        self._tree = ttk.Treeview(container, columns=[c[0] for c in cols], show="headings",
+                                   style="Link.Treeview",
+                                   yscrollcommand=vsb.set,
+                                   selectmode="browse")
+        vsb.config(command=self._tree.yview)
+        self._tree.pack(fill="both", expand=True)
+
+        for col, width in cols:
+            anchor = "w" if col == "Description" else "e"
+            self._tree.column(col, width=width, minwidth=40, anchor=anchor, stretch=False)
+            self._tree.heading(col, text=col)
+
+        self._tree.bind("<<TreeviewSelect>>", self._on_select)
+
+        instances = db.load_linkable_instances(DB_PATH)
+        for inst in instances:
+            yr, mo = inst["month_key"].split("-")
+            mlabel  = f"{MONTH_NAMES[int(mo)-1]} {yr}"
+            funded  = "✓" if inst.get("funded") else ""
+            self._tree.insert("", "end", iid=str(inst["id"]),
+                              values=(mlabel, inst["description"],
+                                      _fmt(inst["amount"]), inst["due_date"], funded))
+
+        btn_row = ctk.CTkFrame(self, fg_color="transparent")
+        btn_row.pack(fill="x", padx=12, pady=10, side="bottom")
+        self._link_btn = ctk.CTkButton(btn_row, text="Link", width=110,
+                                        state="disabled", command=self._do_link)
+        self._link_btn.pack(side="right", padx=(8, 0))
+        ctk.CTkButton(btn_row, text="Cancel", width=100,
+                      fg_color="transparent", border_width=1,
+                      command=self.destroy).pack(side="right")
+
+        if not instances:
+            ctk.CTkLabel(self, text="No unlinked, unpaid bills found.",
+                         font=ctk.CTkFont(size=12), text_color=C["muted"]).pack(pady=16)
+
+    def _on_select(self, _=None):
+        sel = self._tree.selection()
+        self._selected_instance_id = int(sel[0]) if sel else None
+        self._link_btn.configure(state="normal" if self._selected_instance_id else "disabled")
+
+    def _do_link(self):
+        if not self._selected_instance_id:
+            return
+        db.link_bill_to_transaction(self._selected_instance_id, self._txn["id"], DB_PATH)
         self.destroy()
         self._app.refresh()
 

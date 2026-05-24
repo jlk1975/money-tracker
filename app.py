@@ -3100,6 +3100,14 @@ class MoneyTrackerApp(ctk.CTk):
             btn.pack(side="left", padx=4)
             self._tab_btns[name] = btn
 
+        ctk.CTkButton(
+            tab_group, text="💾", width=36, height=30,
+            corner_radius=6,
+            fg_color=C["border"], hover_color=C["card2"],
+            font=ctk.CTkFont(size=16),
+            command=self._backup_db,
+        ).pack(side="left", padx=(12, 4))
+
         self._status_var = tk.StringVar(value="Loading…")
         status_bar = ctk.CTkFrame(self, height=26, corner_radius=0,
                                   fg_color=("gray85", "gray20"))
@@ -3197,6 +3205,17 @@ class MoneyTrackerApp(ctk.CTk):
         old = self._status_var.get()
         self._status_var.set(msg)
         self.after(duration_ms, lambda: self._status_var.set(old))
+
+    def _backup_db(self):
+        import shutil
+        desktop = os.path.expanduser("~/Desktop")
+        ts = date.today().strftime("%Y-%m-%d")
+        dest = os.path.join(desktop, f"money-tracker-backup-{ts}.db")
+        try:
+            shutil.copy2(DB_PATH, dest)
+            self.flash(f"Backup saved to ~/Desktop/money-tracker-backup-{ts}.db")
+        except Exception as e:
+            self.flash(f"Backup failed: {e}")
 
 
 # ── Entry point ───────────────────────────────────────────────────────────────

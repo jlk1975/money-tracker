@@ -268,3 +268,75 @@ def test_get_months_no_duplicates(tmp_db):
     db.insert_instance(_inst(month_key="2026-06", amount=1.0), tmp_db)
     db.insert_instance(_inst(month_key="2026-06", amount=2.0), tmp_db)
     assert db.get_months_with_instances(tmp_db) == ["2026-06"]
+
+
+# ── get_funded_not_paid_total ─────────────────────────────────────────────────
+
+def _txn(**kwargs):
+    base = {
+        "date":               "05/24/2026",
+        "description":        "Test Txn",
+        "type":               "Payment",
+        "amount":             100.0,
+        "notes":              "",
+        "transaction_number": "",
+        "memo":               "",
+        "check_number":       "",
+        "bank_balance":       None,
+    }
+    base.update(kwargs)
+    return base
+
+
+def test_funded_not_paid_empty(tmp_db):
+    assert db.get_funded_not_paid_total(tmp_db) == 0.0
+
+
+def test_funded_not_paid_sums_due_funded(tmp_db):
+    db.insert_instance(_inst(amount=200.0, funded=1, status="Due"), tmp_db)
+    db.insert_instance(_inst(amount=150.0, funded=1, status="Due"), tmp_db)
+    assert db.get_funded_not_paid_total(tmp_db) == 350.0
+
+
+def test_funded_not_paid_ignores_paid(tmp_db):
+    db.insert_instance(_inst(amount=200.0, funded=1, status="Paid"), tmp_db)
+    assert db.get_funded_not_paid_total(tmp_db) == 0.0
+
+
+def test_funded_not_paid_ignores_unfunded(tmp_db):
+    db.insert_instance(_inst(amount=200.0, funded=0, status="Due"), tmp_db)
+    assert db.get_funded_not_paid_total(tmp_db) == 0.0
+
+
+# ── get_safe2spend ────────────────────────────────────────────────────────────
+
+def test_safe2spend_no_data(tmp_db):
+    assert db.get_safe2spend(tmp_db) == 0.0
+
+
+def test_safe2spend_balance_no_funded_bills(tmp_db):
+    db.insert_transaction(_txn(bank_balance=1000.0), tmp_db)
+    assert db.get_safe2spend(tmp_db) == 1000.0
+
+
+def test_safe2spend_funded_bills_no_balance(tmp_db):
+    db.insert_instance(_inst(amount=300.0, funded=1, status="Due"), tmp_db)
+    assert db.get_safe2spend(tmp_db) == -300.0
+
+
+def test_safe2spend_balance_minus_funded(tmp_db):
+    db.insert_transaction(_txn(bank_balance=1000.0), tmp_db)
+    db.insert_instance(_inst(amount=300.0, funded=1, status="Due"), tmp_db)
+    assert db.get_safe2spend(tmp_db) == 700.0
+
+
+def test_safe2spend_uses_most_recent_bank_balance(tmp_db):
+    db.insert_transaction(_txn(date="05/01/2026", bank_balance=500.0), tmp_db)
+    db.insert_transaction(_txn(date="05/24/2026", bank_balance=300.0), tmp_db)
+    assert db.get_safe2spend(tmp_db) == 300.0
+
+
+def test_safe2spend_paid_bills_not_deducted(tmp_db):
+    db.insert_transaction(_txn(bank_balance=1000.0), tmp_db)
+    db.insert_instance(_inst(amount=400.0, funded=1, status="Paid"), tmp_db)
+    assert db.get_safe2spend(tmp_db) == 1000.0

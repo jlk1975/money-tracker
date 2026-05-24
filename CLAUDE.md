@@ -119,10 +119,17 @@ python3 wipe.py    # interactive: wipe instances only, or everything
 ## Register tab (`RegisterTab`)
 
 - Stored as `self._reg_tab` on `MoneyTrackerApp`
-- **Account info bar**: Account Name | Balance | Safe2Spend | Cumulative Txns | Showing Txns | Last Import | ⚙ Account Settings
+- **Account info bar**: Account Name | Balance | Safe2Spend | Cumulative Txns | Showing Txns | Debits/Credits totals | Last Import | ⚙ Account Settings
   - `Cumulative Txns`: total row count in `register_transactions`
   - `Showing Txns`: count of rows currently visible after all filters; updates live
+  - `Debits: $X  Credits: $Y`: sum of Payment/Deposit amounts for currently visible rows; updates with every filter change
   - `Last Import`: "Last Import: N new" — set after each CSV import, blank until first import
+- **Month nav bar** (below info bar): ◀ [Month YYYY] ▶ All
+  - Defaults to current calendar month on launch; ◀/▶ navigate only to months that have transactions (no empty months, arrows disabled at edges)
+  - If current month has no transactions, snaps to nearest earlier month that does
+  - "All" button (blue when active) drops the month filter and shows all transactions
+  - `_reg_month` (YYYY-MM string or None) drives the filter; `_reg_all_months` is a sorted list of months derived from loaded transactions
+  - Month filter is the outermost filter — Linked/Unlinked, Reviewed/Unreviewed, and search all apply on top of it
 - **Toolbar left**: ⬆ Import CSV | 🔗 Link to Bill | Unlink | ✓ Review | 📋 Create Bill | ⚠ Delete All | search box
 - **Toolbar right**: [All][Linked][Unlinked] filter | [All][Reviewed][Unreviewed] filter
 - **Table columns**: Rev | Txn # | Date | Description | Memo | Debit | Credit | Balance | Check # | Bill

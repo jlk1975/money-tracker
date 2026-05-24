@@ -1446,6 +1446,9 @@ class RegisterTab(ctk.CTkFrame):
         self._last_import_msg = ""
         self._search_var = tk.StringVar()
         self._search_var.trace_add("write", lambda *_: self._populate_tree())
+        today = date.today()
+        self._reg_month = f"{today.year:04d}-{today.month:02d}"
+        self._reg_all_months = []
         self._build()
 
     def _build(self):
@@ -1479,6 +1482,11 @@ class RegisterTab(ctk.CTkFrame):
             font=ctk.CTkFont(size=12), text_color=C["muted"])
         self._showing_txns_label.pack(side="left", padx=(12, 0))
 
+        self._totals_label = ctk.CTkLabel(
+            info_bar, text="",
+            font=ctk.CTkFont(size=12), text_color=C["muted"])
+        self._totals_label.pack(side="left", padx=(12, 0))
+
         self._last_import_label = ctk.CTkLabel(
             info_bar, text="",
             font=ctk.CTkFont(size=12), text_color=C["muted"])
@@ -1486,6 +1494,34 @@ class RegisterTab(ctk.CTkFrame):
 
         ctk.CTkButton(info_bar, text="⚙ Account Settings", width=155, height=30,
                       command=self._account_settings).pack(side="right", padx=12, pady=7)
+
+        # ── Month nav bar ─────────────────────────────────────────────
+        nav = ctk.CTkFrame(self, height=36, corner_radius=0, fg_color=C["card"])
+        nav.pack(fill="x")
+        nav.pack_propagate(False)
+
+        self._reg_left_btn = ctk.CTkButton(
+            nav, text="◀", width=32, height=26,
+            fg_color=C["border"], hover_color=C["card2"],
+            command=self._reg_nav_left)
+        self._reg_left_btn.pack(side="left", padx=(12, 2), pady=5)
+
+        self._reg_month_lbl = ctk.CTkLabel(
+            nav, text="", font=ctk.CTkFont(size=13, weight="bold"),
+            text_color=C["heading"], width=130, anchor="center")
+        self._reg_month_lbl.pack(side="left", padx=4)
+
+        self._reg_right_btn = ctk.CTkButton(
+            nav, text="▶", width=32, height=26,
+            fg_color=C["border"], hover_color=C["card2"],
+            command=self._reg_nav_right)
+        self._reg_right_btn.pack(side="left", padx=(2, 8))
+
+        self._reg_all_btn = ctk.CTkButton(
+            nav, text="All", width=52, height=26,
+            fg_color=C["border"], hover_color=C["card2"],
+            command=self._reg_set_all)
+        self._reg_all_btn.pack(side="left", padx=4)
 
         # ── Toolbar ──────────────────────────────────────────────────
         sub = ctk.CTkFrame(self, height=44, corner_radius=0, fg_color=C["card2"])
@@ -1595,6 +1631,61 @@ class RegisterTab(ctk.CTkFrame):
                 return (0, 0, 0, t["id"])
         return max(txns_with_bal, key=date_key)["bank_balance"]
 
+    def _update_reg_nav(self):
+        if self._reg_month is None:
+            self._reg_month_lbl.configure(text="All Months")
+            self._reg_all_btn.configure(fg_color=C["blue"])
+            self._reg_left_btn.configure(state="disabled")
+            self._reg_right_btn.configure(state="disabled")
+        else:
+            self._reg_month_lbl.configure(text=_month_label(self._reg_month))
+            self._reg_all_btn.configure(fg_color=C["border"])
+            months = self._reg_all_months
+            if months and self._reg_month in months:
+                idx = months.index(self._reg_month)
+                self._reg_left_btn.configure(
+                    state="normal" if idx > 0 else "disabled")
+                self._reg_right_btn.configure(
+                    state="normal" if idx < len(months) - 1 else "disabled")
+            else:
+                self._reg_left_btn.configure(state="disabled")
+                self._reg_right_btn.configure(state="disabled")
+
+    def _reg_nav_left(self):
+        if not self._reg_all_months or self._reg_month is None:
+            return
+        try:
+            idx = self._reg_all_months.index(self._reg_month)
+        except ValueError:
+            self._reg_month = self._reg_all_months[-1]
+            self._update_reg_nav()
+            self._populate_tree()
+            return
+        if idx > 0:
+            self._reg_month = self._reg_all_months[idx - 1]
+            self._update_reg_nav()
+            self._populate_tree()
+
+    def _reg_nav_right(self):
+        if not self._reg_all_months or self._reg_month is None:
+            return
+        try:
+            idx = self._reg_all_months.index(self._reg_month)
+        except ValueError:
+            self._reg_month = self._reg_all_months[-1]
+            self._update_reg_nav()
+            self._populate_tree()
+            return
+        if idx < len(self._reg_all_months) - 1:
+            self._reg_month = self._reg_all_months[idx + 1]
+            self._update_reg_nav()
+            self._populate_tree()
+
+    def _reg_set_all(self):
+        self._reg_month = None
+        self._update_reg_nav()
+        self._populate_tree()
+
     def refresh(self, transactions, acct_settings):
         self._transactions = transactions
         self._acct_settings = acct_settings
@@ -1618,6 +1709,24 @@ class RegisterTab(ctk.CTkFrame):
         self._txn_count_label.configure(text=f"Cumulative Txns: {txn_count:,}")
         self._last_import_label.configure(text=self._last_import_msg)
 
+        # compute months that have transactions
+        seen = set()
+        for t in transactions:
+            d = t.get("date", "")
+            try:
+                m, _d, y = d.split("/")
+                seen.add(f"{y}-{m.zfill(2)}")
+            except Exception:
+                pass
+        self._reg_all_months = sorted(seen)
+
+        # if current month has no transactions, snap to nearest earlier month
+        if self._reg_month is not None and self._reg_all_months:
+            if self._reg_month not in self._reg_all_months:
+                candidates = [m for m in self._reg_all_months if m <= self._reg_month]
+                self._reg_month = candidates[-1] if candidates else self._reg_all_months[-1]
+
+        self._update_reg_nav()
         self._populate_tree()
 
     def _set_link_filter(self, val):
@@ -1665,6 +1774,16 @@ class RegisterTab(ctk.CTkFrame):
         self._selected_id = None
 
         txns = self._transactions
+        if self._reg_month is not None:
+            _rm = self._reg_month
+            def _in_month(t):
+                d = t.get("date", "")
+                try:
+                    m, _d, y = d.split("/")
+                    return f"{y}-{m.zfill(2)}" == _rm
+                except Exception:
+                    return False
+            txns = [t for t in txns if _in_month(t)]
         if self._link_filter == "linked":
             txns = [t for t in txns if t.get("bill_description")]
         elif self._link_filter == "unlinked":
@@ -1704,6 +1823,10 @@ class RegisterTab(ctk.CTkFrame):
             self._tree.insert("", "end", iid=str(txn["id"]),
                               values=_merge_reg_row(txn), tags=(tag,))
         self._showing_txns_label.configure(text=f"Showing Txns: {len(txns):,}")
+        total_debit = sum(t["amount"] for t in txns if t["type"] == "Payment")
+        total_credit = sum(t["amount"] for t in txns if t["type"] == "Deposit")
+        self._totals_label.configure(
+            text=f"Debits: ${total_debit:,.2f}  Credits: ${total_credit:,.2f}")
         self._apply_sort()
 
     def _sort_by(self, col):

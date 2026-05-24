@@ -87,6 +87,8 @@ python3 wipe.py    # interactive: wipe instances only, or everything
 - **`funded_through_parts(instances, month_key)`** returns `(days_str, caption_str)` — consecutive funded-through date for unpaid bills from today
 - **Funded workflow**: bills must be funded before soft pay or paid; a bill is marked Paid only by being linked to a register transaction (Link-to-Bill auto-funds + auto-pays in one step)
 - **Safe2Spend** = `bank_balance` (most recent transaction's bank_balance) − `buffer` − `funded_not_yet_paid` (sum of amounts for funded+Due instances across all months); shown on both Register and Dashboard nav bars; can be negative (shown red)
+  - Changes when: CSV imported (bank_balance updates), buffer edited, or bills funded/unfunded on Dashboard
+  - Does NOT change when linking a transaction to an unfunded bill — the bank_balance already reflects the payment at import time; linking is bookkeeping only
 - **Funding enforcement**: `Mark Funded` and `All Funded` check Safe2Spend before writing; blocked with flash message if insufficient; $0 bills skip the check
 - **Tab switching**: no CTkTabview — manual frame-swap via `_switch_tab()`; "Dashboard" / "Definitions" / "Debt" / "Register" buttons centered in header; active tab highlighted in blue, inactive in `C["card2"]`
 - **Header**: 💰 emoji (size 36) on left and right ends; tab buttons centered via 3-column grid layout; window title is "Bill Tracker"
@@ -94,8 +96,11 @@ python3 wipe.py    # interactive: wipe instances only, or everything
 
 ## Dashboard tab (`CombinedDashboard`)
 
-- **Nav bar** (left→right): ◀ [Month YYYY] ▶  This Month  |  [centered: "N Bills In Month: $X · Y paid / Z unpaid"]  |  Buffer: $X  Safe2Spend: $X  ▲ Hide Summary
-  - All nav bar text is size 13; Safe2Spend is green; Buffer is muted
+- **Nav bar** layout: left cluster (◀ [Month YYYY] ▶ This Month) | 5-column equal-weight middle grid | ▲ Hide Summary (right)
+  - Middle grid columns: funded-through label | 4 random animal emojis | bills info label | progress bar + Paid % | Safe2Spend
+  - Implemented as a `CTkFrame` packed with `fill="x", expand=True`, children in `grid` with `columnconfigure(weight=1)` — ensures even spacing regardless of window width
+  - 4 random animals picked at app launch via `random.sample()` from a pool of 16 emoji (fox, lion, unicorn, parrot, peacock, butterfly, dragon, raccoon, frog, tiger, shark, flamingo, otter, hedgehog, brontosaurus, T-Rex); Noto Color Emoji is installed so they render in color
+  - All nav bar text is size 13; Safe2Spend is green
   - No vibe filter buttons (removed — `_vibe_filter` set exists but is always empty)
 - **Metrics panel** (collapsible): 2 rows of 4 KPI widgets
   - Row 1: `VibeBarsCard`, Payment Progress, Paid, Due

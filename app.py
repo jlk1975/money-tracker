@@ -11,6 +11,7 @@ import os
 import json
 import re
 import calendar
+import random
 from datetime import date
 
 import db
@@ -408,7 +409,9 @@ class CombinedDashboard(ctk.CTkFrame):
             font=ctk.CTkFont(size=13, weight="bold"), text_color=C["heading"])
         self._funded_through_lbl.grid(row=0, column=0, pady=7)
 
-        ctk.CTkLabel(_mid, text="💰", font=ctk.CTkFont(size=15)).grid(
+        _animals = ["🦊","🦁","🦄","🦜","🦚","🦋","🐉","🦝","🐸","🐯","🦈","🦩","🦦","🦔","🦕","🦖"]
+        _picked  = " ".join(random.sample(_animals, 4))
+        ctk.CTkLabel(_mid, text=_picked, font=ctk.CTkFont(size=15)).grid(
             row=0, column=1, pady=7)
 
         self._month_total_lbl = ctk.CTkLabel(

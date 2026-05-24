@@ -1878,18 +1878,19 @@ class RegisterTab(ctk.CTkFrame):
         except Exception as e:
             self._app.flash(f"Error reading CSV: {e}")
             return
-        existing_nums = db.get_imported_transaction_numbers(DB_PATH)
+        existing_keys = db.get_imported_transaction_keys(DB_PATH)
         existing_fps  = db.get_transaction_fingerprints(DB_PATH)
         new_count = 0
         dup_count = 0
         for row in rows:
             txn_num = row.get("transaction_number", "")
             if txn_num:
-                if txn_num in existing_nums:
+                key = (txn_num, row.get("date", ""))
+                if key in existing_keys:
                     dup_count += 1
                     continue
                 db.insert_transaction(row, DB_PATH)
-                existing_nums.add(txn_num)
+                existing_keys.add(key)
             else:
                 fp = (row.get("date", ""), row.get("type", ""), row.get("amount", 0.0), row.get("description", ""))
                 if fp in existing_fps:

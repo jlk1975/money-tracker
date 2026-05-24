@@ -560,12 +560,12 @@ def toggle_reviewed(txn_id, db_path=DEFAULT_DB):
         )
 
 
-def get_imported_transaction_numbers(db_path=DEFAULT_DB):
+def get_imported_transaction_keys(db_path=DEFAULT_DB):
     with _conn(db_path) as con:
         rows = con.execute(
-            "SELECT transaction_number FROM register_transactions WHERE transaction_number != ''"
+            "SELECT transaction_number, date FROM register_transactions WHERE transaction_number != ''"
         ).fetchall()
-    return {r[0] for r in rows}
+    return {(r[0], r[1]) for r in rows}
 
 
 def get_transaction_count(db_path=DEFAULT_DB):

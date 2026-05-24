@@ -64,7 +64,7 @@ python3 wipe.py    # interactive: wipe instances only, or everything
 
 **`register_transactions`** — one row per checking account transaction
 - `id`, `date` (MM/DD/YYYY), `description`, `type` ("Deposit" or "Payment"), `amount` (REAL, always positive)
-- `transaction_number` — bank-assigned ID; used for duplicate detection on CSV import; blank for manual entries
+- `transaction_number` — bank-assigned ID; used for duplicate detection on CSV import (combined with `date`); blank for manual entries
 - `memo`, `check_number` — from bank CSV columns
 - `bank_balance` (REAL, nullable) — bank's own running balance from CSV; used as authoritative current balance; NULL for manually added rows
 - `reviewed` (0/1) — user-toggled "I have reviewed this transaction" flag; always 0 on import
@@ -136,7 +136,7 @@ python3 wipe.py    # interactive: wipe instances only, or everything
   - Balance column = `bank_balance` from CSV (the bank's own running balance per row)
   - Bill column = linked bill instance description (blank if unlinked)
   - Deposit rows: green; linked rows: blue tint; reviewed rows: muted foreground; negative balance: red
-- **CSV import**: `parse_bank_csv(path)` → dedup by `transaction_number` (rows with one) or `(date, type, amount, description)` fingerprint (rows without); new rows always get `reviewed=0`; flash shows "Imported N (M duplicates skipped)"
+- **CSV import**: `parse_bank_csv(path)` → dedup by `(transaction_number, date)` composite key (rows with a txn number) or `(date, type, amount, description)` fingerprint (rows without); new rows always get `reviewed=0`; flash shows "Imported N (M duplicates skipped)"
 - **Review toggle** (`✓ Review`): toggles `reviewed` flag; after toggling, selection auto-advances to the next row in current display order — if the toggled row disappears from the filter view, the row at the same index becomes selected; if it stays, selection moves one down
 - **Link-to-Bill flow**: select a Payment transaction → click 🔗 Link to Bill → `LinkBillDialog` opens
   - Default view: bills from the same month as the transaction, sorted by closest amount match

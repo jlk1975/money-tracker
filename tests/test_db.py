@@ -190,6 +190,121 @@ def test_delete_instance_renormalises_row_order(tmp_db):
     assert [r["amount"] for r in rows]    == [2.0, 3.0]
 
 
+def test_delete_instance_soft_delete_blocks_regeneration(tmp_db):
+    """A soft-deleted instance keeps its definition_id so generate won't recreate it."""
+    db.insert_definition(_defn(frequency="Monthly"), tmp_db)
+    db.generate_month_instances("2026-06", tmp_db)
+    rows = db.load_instances("2026-06", tmp_db)
+    db.delete_instance(rows[0]["id"], tmp_db)
+    assert db.load_instances("2026-06", tmp_db) == []
+    db.generate_month_instances("2026-06", tmp_db)
+    assert db.load_instances("2026-06", tmp_db) == []
+
+
+# ── link_bill_to_transaction ──────────────────────────────────────────────────
+
+def test_link_sets_paid_funded_transaction(tmp_db):
+    inst_id = db.insert_instance(_inst(), tmp_db)
+    txn_id  = db.insert_transaction(_txn(), tmp_db)
+    db.link_bill_to_transaction(inst_id, txn_id, tmp_db)
+    rows = db.load_instances("2026-06", tmp_db)
+    assert rows[0]["transaction_id"] == txn_id
+    assert rows[0]["funded"]         == 1
+    assert rows[0]["status"]         == "Paid"
+    assert rows[0]["soft_pay"]       == 0
+
+
+def test_link_sets_date_paid_to_today(tmp_db):
+    from datetime import date
+    inst_id = db.insert_instance(_inst(), tmp_db)
+    txn_id  = db.insert_transaction(_txn(), tmp_db)
+    db.link_bill_to_transaction(inst_id, txn_id, tmp_db)
+    rows = db.load_instances("2026-06", tmp_db)
+    assert rows[0]["date_paid"] == date.today().strftime("%m/%d/%Y")
+
+
+def test_link_clears_soft_pay(tmp_db):
+    inst_id = db.insert_instance(_inst(funded=1), tmp_db)
+    db.toggle_soft_pay(inst_id, tmp_db)  # sets soft_pay=1
+    txn_id = db.insert_transaction(_txn(), tmp_db)
+    db.link_bill_to_transaction(inst_id, txn_id, tmp_db)
+    rows = db.load_instances("2026-06", tmp_db)
+    assert rows[0]["soft_pay"] == 0
+
+
+# ── unlink_transaction ────────────────────────────────────────────────────────
+
+def test_unlink_reverts_to_due_unfunded(tmp_db):
+    inst_id = db.insert_instance(_inst(), tmp_db)
+    txn_id  = db.insert_transaction(_txn(), tmp_db)
+    db.link_bill_to_transaction(inst_id, txn_id, tmp_db)
+    db.unlink_transaction(inst_id, tmp_db)
+    rows = db.load_instances("2026-06", tmp_db)
+    assert rows[0]["transaction_id"] is None
+    assert rows[0]["status"]         == "Due"
+    assert rows[0]["funded"]         == 0
+    assert rows[0]["date_paid"]      == ""
+
+
+# ── delete_all_transactions ───────────────────────────────────────────────────
+
+def test_delete_all_transactions_clears_table(tmp_db):
+    db.insert_transaction(_txn(), tmp_db)
+    db.insert_transaction(_txn(), tmp_db)
+    db.delete_all_transactions(tmp_db)
+    assert db.load_transactions(tmp_db) == []
+
+
+def test_delete_all_transactions_reverts_linked_instances(tmp_db):
+    inst_id = db.insert_instance(_inst(), tmp_db)
+    txn_id  = db.insert_transaction(_txn(), tmp_db)
+    db.link_bill_to_transaction(inst_id, txn_id, tmp_db)
+    db.delete_all_transactions(tmp_db)
+    rows = db.load_instances("2026-06", tmp_db)
+    assert rows[0]["transaction_id"] is None
+    assert rows[0]["status"]         == "Due"
+    assert rows[0]["funded"]         == 0
+
+
+def test_delete_all_transactions_leaves_unlinked_instances(tmp_db):
+    db.insert_instance(_inst(amount=75.0), tmp_db)
+    db.insert_transaction(_txn(), tmp_db)
+    db.delete_all_transactions(tmp_db)
+    rows = db.load_instances("2026-06", tmp_db)
+    assert len(rows) == 1
+    assert rows[0]["status"] == "Due"
+
+
+# ── load_linkable_instances ───────────────────────────────────────────────────
+
+def test_load_linkable_excludes_paid(tmp_db):
+    db.insert_instance(_inst(status="Paid"), tmp_db)
+    assert db.load_linkable_instances(tmp_db) == []
+
+
+def test_load_linkable_excludes_linked(tmp_db):
+    inst_id = db.insert_instance(_inst(), tmp_db)
+    txn_id  = db.insert_transaction(_txn(), tmp_db)
+    db.link_bill_to_transaction(inst_id, txn_id, tmp_db)
+    assert db.load_linkable_instances(tmp_db) == []
+
+
+def test_load_linkable_excludes_deleted(tmp_db):
+    inst_id = db.insert_instance(_inst(), tmp_db)
+    db.delete_instance(inst_id, tmp_db)
+    assert db.load_linkable_instances(tmp_db) == []
+
+
+def test_load_linkable_sort_order(tmp_db):
+    """Current/past months appear first (most recent first); future months after (nearest first)."""
+    db.insert_instance(_inst(month_key="2026-04", due_date="04/15/2026"), tmp_db)
+    db.insert_instance(_inst(month_key="2026-05", due_date="05/15/2026"), tmp_db)
+    db.insert_instance(_inst(month_key="2026-06", due_date="06/15/2026"), tmp_db)
+    db.insert_instance(_inst(month_key="2026-07", due_date="07/15/2026"), tmp_db)
+    result = db.load_linkable_instances(tmp_db)
+    assert [r["month_key"] for r in result] == ["2026-05", "2026-04", "2026-06", "2026-07"]
+
+
 # ── generate_month_instances ──────────────────────────────────────────────────
 
 def test_generate_creates_monthly_instances(tmp_db):

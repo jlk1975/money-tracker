@@ -141,6 +141,45 @@ def compute_nw_metrics(nw_history, start_date, haircut, cash_goal):
     }
 
 
+def compute_debt_summary(accounts):
+    """Return {total_debt, total_monthly_pmt, years_until_free} from CC/Loan accounts."""
+    debt_accts = [a for a in accounts if a.get("category") in ("Credit Cards", "Loans")]
+    total_debt = sum(
+        abs(a["latest_balance"]) for a in debt_accts if a.get("latest_balance") is not None
+    )
+    total_monthly_pmt = sum(a.get("debt_monthly_payment") or 0 for a in debt_accts)
+
+    if not debt_accts:
+        return {"total_debt": 0.0, "total_monthly_pmt": 0.0, "years_until_free": "—"}
+
+    max_payoff = None
+    valid = True
+    for a in debt_accts:
+        pd = a.get("debt_payoff_date") or ""
+        if not pd:
+            valid = False
+            break
+        try:
+            m, day, y = pd.split("/")
+            d = date(int(y), int(m), int(day))
+            max_payoff = max(max_payoff, d) if max_payoff else d
+        except Exception:
+            valid = False
+            break
+
+    if valid and max_payoff:
+        delta_days = (max_payoff - date.today()).days
+        years_str = f"{max(delta_days, 0) / 365.25:.1f}"
+    else:
+        years_str = "N/A"
+
+    return {
+        "total_debt":       total_debt,
+        "total_monthly_pmt": total_monthly_pmt,
+        "years_until_free": years_str,
+    }
+
+
 def calculate_summary(annotated_instances):
     """Return aggregate stats across all instances."""
     total_due  = sum(b["amount"] for b in annotated_instances if b.get("status") == "Due")

@@ -718,11 +718,17 @@ def delete_all_transactions(db_path=DEFAULT_DB):
 # ── Accounts CRUD ─────────────────────────────────────────────────────────────
 
 def get_accounts(db_path=DEFAULT_DB):
-    """Return all accounts with their latest balance and date."""
+    """Return all accounts with latest balance, date, and linked debt fields."""
     with _conn(db_path) as con:
-        accounts = con.execute(
-            "SELECT * FROM accounts ORDER BY sort_order, id"
-        ).fetchall()
+        accounts = con.execute("""
+            SELECT a.*,
+                   d.interest_rate  AS debt_interest_rate,
+                   d.monthly_payment AS debt_monthly_payment,
+                   d.payoff_date    AS debt_payoff_date
+            FROM accounts a
+            LEFT JOIN debts d ON d.id = a.debt_id
+            ORDER BY a.sort_order, a.id
+        """).fetchall()
         result = []
         for a in accounts:
             row = _row_to_dict(a)
@@ -822,8 +828,12 @@ def sync_register_account(db_path=DEFAULT_DB):
 
 def delete_account(account_id, db_path=DEFAULT_DB):
     with _conn(db_path) as con:
+        row = con.execute("SELECT debt_id FROM accounts WHERE id=?", (account_id,)).fetchone()
         con.execute("DELETE FROM account_balances WHERE account_id=?", (account_id,))
         con.execute("DELETE FROM accounts WHERE id=?", (account_id,))
+        if row and row["debt_id"]:
+            con.execute("DELETE FROM debt_balances WHERE debt_id=?", (row["debt_id"],))
+            con.execute("DELETE FROM debts WHERE id=?", (row["debt_id"],))
 
 
 def log_account_balance(account_id, entry_date, balance, db_path=DEFAULT_DB):

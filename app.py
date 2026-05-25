@@ -3045,10 +3045,11 @@ class AccountsTab(ctk.CTkFrame):
                       fg_color=C["border"], hover_color=C["card2"],
                       text_color=C["text"], font=ctk.CTkFont(size=13),
                       command=self._on_delete).pack(side="left", padx=4, pady=7)
-        ctk.CTkButton(bar, text="📈 Log Balance", width=120, height=30,
-                      fg_color=C["border"], hover_color=C["card2"],
-                      text_color=C["text"], font=ctk.CTkFont(size=13),
-                      command=self._on_log).pack(side="left", padx=4, pady=7)
+        self._log_btn = ctk.CTkButton(bar, text="📈 Log Balance", width=120, height=30,
+                                      fg_color=C["border"], hover_color=C["card2"],
+                                      text_color=C["text"], font=ctk.CTkFont(size=13),
+                                      command=self._on_log)
+        self._log_btn.pack(side="left", padx=4, pady=7)
         ctk.CTkButton(bar, text="⚙ Settings", width=100, height=30,
                       fg_color=C["border"], hover_color=C["card2"],
                       text_color=C["text"], font=ctk.CTkFont(size=13),
@@ -3199,6 +3200,7 @@ class AccountsTab(ctk.CTkFrame):
     # ── Refresh ───────────────────────────────────────────────────────────────
 
     def refresh(self):
+        db.sync_register_account(DB_PATH)
         self._accounts    = db.get_accounts(DB_PATH)
         self._nw_history  = db.get_nw_history(DB_PATH)
         self._nw_settings = db.get_nw_settings(DB_PATH)
@@ -3272,9 +3274,13 @@ class AccountsTab(ctk.CTkFrame):
                 bal_str = f"${bal:,.2f}" if bal is not None else "—"
                 date_str = a["latest_date"] or "—"
                 tag = "account" if a.get("active", 1) else "inactive"
-                debt_flag = " ⇢ Debt" if a.get("debt_id") else ""
+                flags = ""
+                if a.get("register_linked"):
+                    flags += " ⇢ Register"
+                if a.get("debt_id"):
+                    flags += " ⇢ Debt"
                 self._tree.insert("", "end", iid=str(a["id"]),
-                                  values=(f"  {a['name']}{debt_flag}", bal_str, date_str),
+                                  values=(f"  {a['name']}{flags}", bal_str, date_str),
                                   tags=(tag,))
 
     # ── Chart ─────────────────────────────────────────────────────────────────
@@ -3338,16 +3344,24 @@ class AccountsTab(ctk.CTkFrame):
         sel = self._tree.selection()
         if not sel:
             self._selected_id = None
-            return
-        iid = sel[0]
-        if iid.startswith("cat_"):
-            self._selected_id = None
-            self._tree.selection_remove(iid)
         else:
-            try:
-                self._selected_id = int(iid)
-            except ValueError:
+            iid = sel[0]
+            if iid.startswith("cat_"):
                 self._selected_id = None
+                self._tree.selection_remove(iid)
+            else:
+                try:
+                    self._selected_id = int(iid)
+                except ValueError:
+                    self._selected_id = None
+
+        acct = self._selected_account()
+        if acct and acct.get("register_linked"):
+            self._log_btn.configure(state="disabled", text="📈 Log Balance",
+                                    fg_color=C["border"], text_color=C["muted"])
+        else:
+            self._log_btn.configure(state="normal", text="📈 Log Balance",
+                                    fg_color=C["border"], text_color=C["text"])
 
     def _selected_account(self):
         if self._selected_id is None:
@@ -3382,13 +3396,17 @@ class AccountsTab(ctk.CTkFrame):
         acct = self._selected_account()
         if not acct:
             return
+        if acct.get("register_linked"):
+            return
         LogBalanceDialog(self, acct, self._on_balance_saved)
 
     def _on_account_saved(self, account_id, data):
         if account_id:
             db.update_account(account_id, data, DB_PATH)
         else:
-            db.insert_account(data, DB_PATH)
+            new_id = db.insert_account(data, DB_PATH)
+            if data.get("start_bal") is not None and data.get("start_date"):
+                db.log_account_balance(new_id, data["start_date"], data["start_bal"], DB_PATH)
         self.refresh()
 
     def _on_balance_saved(self, account_id, entry_date, balance):
@@ -3413,7 +3431,9 @@ class AccountDialog(ctk.CTkToplevel):
         self._on_save = on_save
         self.title("Edit Account" if account else "Add Account")
         self.resizable(False, False)
-        self.grab_set()
+        self.geometry("360x320")
+        self.after(100, self.grab_set)
+        self.after(100, self.focus_set)
 
         pad = {"padx": 16, "pady": 6}
 
@@ -3445,32 +3465,71 @@ class AccountDialog(ctk.CTkToplevel):
             if match:
                 self._debt_var.set(match["name"])
 
+        # Register link (only for Cash accounts)
+        self._register_frame = ctk.CTkFrame(self, fg_color="transparent")
+        self._register_frame.pack(fill="x")
+        self._register_var = ctk.BooleanVar(
+            value=bool(account.get("register_linked")) if account else False
+        )
+        ctk.CTkCheckBox(self._register_frame,
+                        text="Auto-sync balance from Register tab",
+                        variable=self._register_var).pack(anchor="w", padx=16, pady=(0, 4))
+
         self._active_var = ctk.BooleanVar(value=account.get("active", 1) if account else True)
         ctk.CTkCheckBox(self, text="Active", variable=self._active_var).pack(
             anchor="w", padx=16, pady=6)
 
+        # Starting balance — only shown when creating a new account
+        if not account:
+            from datetime import date as _date
+            tk.Frame(self, height=1, bg=C["border"]).pack(fill="x", padx=16, pady=(4, 0))
+            ctk.CTkLabel(self, text="Starting Balance (optional)", anchor="w").pack(
+                fill="x", padx=16, pady=(6, 0))
+            bal_row = ctk.CTkFrame(self, fg_color="transparent")
+            bal_row.pack(fill="x", padx=16, pady=(2, 0))
+            self._start_bal = ctk.CTkEntry(bal_row, width=140, placeholder_text="e.g. 1500.00")
+            self._start_bal.pack(side="left", padx=(0, 8))
+            ctk.CTkLabel(bal_row, text="as of", text_color=C["muted"]).pack(side="left", padx=(0, 6))
+            self._start_date = ctk.CTkEntry(bal_row, width=110)
+            self._start_date.insert(0, _date.today().strftime("%m/%d/%Y"))
+            self._start_date.pack(side="left")
+            self.geometry("360x400")
+        else:
+            self._start_bal  = None
+            self._start_date = None
+
         btn_row = ctk.CTkFrame(self, fg_color="transparent")
         btn_row.pack(fill="x", padx=16, pady=(8, 12))
-        ctk.CTkButton(btn_row, text="Save", width=100,
-                      command=self._save).pack(side="left", padx=(0, 8))
-        ctk.CTkButton(btn_row, text="Cancel", width=100,
+        ctk.CTkButton(btn_row, text="Save", width=80,
+                      command=self._save).pack(side="left", padx=(0, 6))
+        if not account:
+            ctk.CTkButton(btn_row, text="Save & Add Another", width=150,
+                          fg_color=C["blue"], hover_color=C["heading"],
+                          text_color="#ffffff",
+                          command=self._save_and_add).pack(side="left", padx=(0, 6))
+        ctk.CTkButton(btn_row, text="Cancel", width=80,
                       fg_color=C["border"], hover_color=C["card2"],
                       text_color=C["text"],
                       command=self.destroy).pack(side="left")
 
         self._on_category_change(self._category.get())
-        self.after(50, self._name.focus_set)
+        self.after(150, self._name.focus_set)
 
     def _on_category_change(self, cat):
         if cat in ("Credit Cards", "Loans"):
             self._debt_frame.pack(fill="x")
+            self._register_frame.pack_forget()
+        elif cat == "Cash":
+            self._debt_frame.pack_forget()
+            self._register_frame.pack(fill="x")
         else:
             self._debt_frame.pack_forget()
+            self._register_frame.pack_forget()
 
-    def _save(self):
+    def _build_data(self):
         name = self._name.get().strip()
         if not name:
-            return
+            return None
         cat = self._category.get()
         debt_name = self._debt_var.get()
         debt_id = None
@@ -3478,14 +3537,46 @@ class AccountDialog(ctk.CTkToplevel):
             match = next((d for d in self._debts if d["name"] == debt_name), None)
             if match:
                 debt_id = match["id"]
-        data = {
-            "name":     name,
-            "category": cat,
-            "active":   1 if self._active_var.get() else 0,
-            "debt_id":  debt_id,
+        register_linked = (cat == "Cash" and self._register_var.get())
+        start_bal  = None
+        start_date = None
+        if self._start_bal is not None:
+            raw = self._start_bal.get().strip().replace(",", "")
+            if raw:
+                try:
+                    start_bal  = float(raw)
+                    start_date = self._start_date.get().strip() or None
+                except ValueError:
+                    pass
+        return {
+            "name":            name,
+            "category":        cat,
+            "active":          1 if self._active_var.get() else 0,
+            "debt_id":         debt_id,
+            "register_linked": 1 if register_linked else 0,
+            "start_bal":       start_bal,
+            "start_date":      start_date,
         }
+
+    def _save(self):
+        data = self._build_data()
+        if data is None:
+            return
         self._on_save(self._account["id"] if self._account else None, data)
         self.destroy()
+
+    def _save_and_add(self):
+        data = self._build_data()
+        if data is None:
+            return
+        self._on_save(None, data)
+        # Reset fields for next entry
+        self._name.delete(0, "end")
+        self._start_bal.delete(0, "end")
+        self._register_var.set(False)
+        self._active_var.set(True)
+        self._debt_var.set("— none —")
+        self._name.focus_set()
 
 
 class LogBalanceDialog(ctk.CTkToplevel):
@@ -3495,7 +3586,9 @@ class LogBalanceDialog(ctk.CTkToplevel):
         self._on_save = on_save
         self.title("Log Balance")
         self.resizable(False, False)
-        self.grab_set()
+        self.geometry("320x240")
+        self.after(100, self.grab_set)
+        self.after(100, self.focus_set)
 
         from datetime import date as _date
         today = _date.today().strftime("%m/%d/%Y")
@@ -3530,7 +3623,7 @@ class LogBalanceDialog(ctk.CTkToplevel):
                       text_color=C["text"],
                       command=self.destroy).pack(side="left")
 
-        self.after(50, self._balance.focus_set)
+        self.after(150, self._balance.focus_set)
 
     def _save(self):
         try:
@@ -3550,7 +3643,9 @@ class NWSettingsDialog(ctk.CTkToplevel):
         self._on_save = on_save
         self.title("Net Worth Settings")
         self.resizable(False, False)
-        self.grab_set()
+        self.geometry("320x220")
+        self.after(100, self.grab_set)
+        self.after(100, self.focus_set)
 
         fields = [
             ("Start Date (MM/DD/YYYY)", "nw_start_date", str(settings.get("nw_start_date", ""))),

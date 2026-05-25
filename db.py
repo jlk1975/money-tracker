@@ -225,6 +225,12 @@ def init_db(db_path=DEFAULT_DB):
                 con.execute(f"ALTER TABLE account_settings ADD COLUMN {col} {definition}")
             except Exception:
                 pass
+        try:
+            con.execute(
+                "ALTER TABLE accounts ADD COLUMN register_linked INTEGER NOT NULL DEFAULT 0"
+            )
+        except Exception:
+            pass
 
 
 # ── Bill Definitions CRUD ─────────────────────────────────────────────────────
@@ -736,30 +742,82 @@ def insert_account(account, db_path=DEFAULT_DB):
         max_order = con.execute(
             "SELECT COALESCE(MAX(sort_order), 0) FROM accounts"
         ).fetchone()[0]
+        if account.get("register_linked"):
+            con.execute("UPDATE accounts SET register_linked=0")
         cur = con.execute("""
-            INSERT INTO accounts (name, category, active, debt_id, sort_order)
-            VALUES (?, ?, 1, ?, ?)
+            INSERT INTO accounts (name, category, active, debt_id, sort_order, register_linked)
+            VALUES (?, ?, 1, ?, ?, ?)
         """, (
             account.get("name", ""),
             account.get("category", "Cash"),
             account.get("debt_id"),
             max_order + 1,
+            1 if account.get("register_linked") else 0,
         ))
         return cur.lastrowid
 
 
 def update_account(account_id, account, db_path=DEFAULT_DB):
     with _conn(db_path) as con:
+        if account.get("register_linked"):
+            con.execute("UPDATE accounts SET register_linked=0 WHERE id!=?", (account_id,))
         con.execute("""
-            UPDATE accounts SET name=?, category=?, active=?, debt_id=?
+            UPDATE accounts SET name=?, category=?, active=?, debt_id=?, register_linked=?
             WHERE id=?
         """, (
             account.get("name", ""),
             account.get("category", "Cash"),
             account.get("active", 1),
             account.get("debt_id"),
+            1 if account.get("register_linked") else 0,
             account_id,
         ))
+
+
+def sync_register_account(db_path=DEFAULT_DB):
+    """Auto-update the register-linked account's balance from the latest bank_balance.
+
+    Writes one account_balances entry per calendar day — overwrites today's
+    entry if it already exists so repeated refreshes don't accumulate duplicates.
+    Does nothing if no account is marked register_linked or the register has no
+    bank_balance rows.
+    """
+    today = date.today().strftime("%m/%d/%Y")
+    with _conn(db_path) as con:
+        acct = con.execute(
+            "SELECT id FROM accounts WHERE register_linked=1 LIMIT 1"
+        ).fetchone()
+        if not acct:
+            return
+        account_id = acct["id"]
+
+        bal_row = con.execute("""
+            SELECT bank_balance FROM register_transactions
+            WHERE bank_balance IS NOT NULL
+            ORDER BY SUBSTR(date,7,4) DESC,
+                     SUBSTR(date,1,2) DESC,
+                     SUBSTR(date,4,2) DESC,
+                     id DESC
+            LIMIT 1
+        """).fetchone()
+        if not bal_row:
+            return
+        balance = bal_row["bank_balance"]
+
+        existing = con.execute(
+            "SELECT id FROM account_balances WHERE account_id=? AND date=?",
+            (account_id, today)
+        ).fetchone()
+        if existing:
+            con.execute(
+                "UPDATE account_balances SET balance=? WHERE id=?",
+                (balance, existing["id"])
+            )
+        else:
+            con.execute(
+                "INSERT INTO account_balances (account_id, date, balance) VALUES (?, ?, ?)",
+                (account_id, today, balance)
+            )
 
 
 def delete_account(account_id, db_path=DEFAULT_DB):

@@ -17,8 +17,8 @@ from datetime import date
 import db
 import calc
 
-ctk.set_appearance_mode("dark")
-ctk.set_default_color_theme("blue")
+ctk.set_appearance_mode("light")
+ctk.set_default_color_theme(os.path.join(os.path.dirname(__file__), "warm-brown.json"))
 
 _DATA_DIR     = os.path.join(os.path.expanduser("~"), ".local", "share", "money-tracker")
 os.makedirs(_DATA_DIR, exist_ok=True)
@@ -27,20 +27,20 @@ SETTINGS_PATH = os.path.join(_DATA_DIR, "settings.json")
 
 # ── Palette ───────────────────────────────────────────────────────────────────
 C = {
-    "bg":      "#1e1e2e",
-    "card":    "#2a2a3e",
-    "card2":   "#252538",
-    "border":  "#3a3a55",
-    "text":    "#e0e0f0",
-    "muted":   "#888899",
-    "green":   "#4ade80",
-    "red":     "#f87171",
-    "blue":    "#60a5fa",
-    "yellow":  "#fbbf24",
-    "purple":  "#c084fc",
-    "teal":    "#2dd4bf",
-    "orange":  "#fb923c",
-    "heading": "#8ab4f8",
+    "bg":      "#fefce8",
+    "card":    "#ffffff",
+    "card2":   "#fef9c3",
+    "border":  "#e5d58a",
+    "text":    "#1c1917",
+    "muted":   "#78716c",
+    "green":   "#15803d",
+    "red":     "#b91c1c",
+    "blue":    "#854d0e",
+    "yellow":  "#ca8a04",
+    "purple":  "#78716c",
+    "teal":    "#0e7490",
+    "orange":  "#c2410c",
+    "heading": "#713f12",
 }
 
 STATUSES      = ["Due", "Paid"]
@@ -288,7 +288,7 @@ class KPICard(ctk.CTkFrame):
 
 
 class VibeBarsCard(ctk.CTkFrame):
-    _COLORS = {"🌟": "#4ade80", "🤷": "#60a5fa", "💔": "#f87171", "": "#555566"}
+    _COLORS = {"🌟": "#2a7a3b", "🤷": "#888888", "💔": "#b91c1c", "": "#888888"}
 
     def __init__(self, parent, vibe_counts, **kw):
         super().__init__(parent, fg_color=C["card"], corner_radius=10,
@@ -343,7 +343,7 @@ class _HBar(tk.Canvas):
         bw = w - lw - 100
         self.create_text(lw - 4, y + bar_h // 2, text=label,
                          anchor="e", fill=C["muted"], font=("Helvetica", 11))
-        self.create_rectangle(bar_x, y, bar_x + bw, y + bar_h, fill="#333350", outline="")
+        self.create_rectangle(bar_x, y, bar_x + bw, y + bar_h, fill=C["border"], outline="")
         fw = int(bw * min(value / max_value, 1.0)) if max_value else 0
         if fw > 0:
             self.create_rectangle(bar_x, y, bar_x + fw, y + bar_h, fill=color, outline="")
@@ -475,7 +475,7 @@ class CombinedDashboard(ctk.CTkFrame):
             btn.pack(side="left", padx=(8, 0), pady=7)
             self._status_btns[status] = (btn, color)
 
-        self._bottom = tk.Frame(self, bg="#1a1a2e")
+        self._bottom = tk.Frame(self, bg="#fefce8")
         self._bottom.pack(fill="both", expand=True)
 
         self._sidebar = ctk.CTkFrame(self._bottom, width=210, fg_color=C["card"],
@@ -484,20 +484,20 @@ class CombinedDashboard(ctk.CTkFrame):
         self._sidebar.pack(side="right", fill="y")
         self._sidebar.pack_propagate(False)
 
-        self._tree_container = tk.Frame(self._bottom, bg="#1a1a2e")
+        self._tree_container = tk.Frame(self._bottom, bg="#fefce8")
         self._tree_container.pack(side="left", fill="both", expand=True)
 
         style = ttk.Style()
         style.theme_use("clam")
         style.configure("Money.Treeview",
-                        background="#2b2b3b", foreground="#e0e0e0",
-                        fieldbackground="#2b2b3b", rowheight=26,
+                        background="#fefce8", foreground="#1c1917",
+                        fieldbackground="#fefce8", rowheight=26,
                         font=("Consolas", 11))
         style.configure("Money.Treeview.Heading",
-                        background="#1f1f2e", foreground="#8ab4f8",
+                        background="#fef08a", foreground="#713f12",
                         font=("Helvetica", 11, "bold"), relief="flat")
         style.map("Money.Treeview",
-                  background=[("selected", "#3a5a8a")],
+                  background=[("selected", "#854d0e")],
                   foreground=[("selected", "#ffffff")])
 
         col_ids = [c[0] for c in GRID_COLUMNS]
@@ -519,9 +519,9 @@ class CombinedDashboard(ctk.CTkFrame):
             self._tree.heading(col, text=col, command=lambda c=col: self._sort_by(c))
             self._tree.column(col, width=width, minwidth=50, anchor=anchor, stretch=False)
 
-        self._tree.tag_configure("due",    background="#3a1e1e", foreground="#f08080")
-        self._tree.tag_configure("paid",   background="#1e3a2f", foreground="#7defa7")
-        self._tree.tag_configure("funded", background="#2e2a00", foreground="#ffd700")
+        self._tree.tag_configure("due",    background="#fecaca", foreground="#7f1d1d")
+        self._tree.tag_configure("paid",   background="#bbf7d0", foreground="#14532d")
+        self._tree.tag_configure("funded", background="#fde68a", foreground="#78350f")
 
         self._tree.bind("<<TreeviewSelect>>", self._on_select)
         self._tree.bind("<Double-1>", lambda _: self._edit())
@@ -938,19 +938,19 @@ class DefinitionsTab(ctk.CTkFrame):
                      placeholder_text="🔍  Search definitions...",
                      width=200, height=30).pack(side="left", padx=(12, 0), pady=7)
 
-        container = tk.Frame(self, bg="#1a1a2e")
+        container = tk.Frame(self, bg="#fefce8")
         container.pack(fill="both", expand=True)
 
         style = ttk.Style()
         style.configure("Def.Treeview",
-                        background="#2b2b3b", foreground="#e0e0e0",
-                        fieldbackground="#2b2b3b", rowheight=26,
+                        background="#fefce8", foreground="#1c1917",
+                        fieldbackground="#fefce8", rowheight=26,
                         font=("Consolas", 11))
         style.configure("Def.Treeview.Heading",
-                        background="#1f1f2e", foreground="#8ab4f8",
+                        background="#fef08a", foreground="#713f12",
                         font=("Helvetica", 11, "bold"), relief="flat")
         style.map("Def.Treeview",
-                  background=[("selected", "#3a5a8a")],
+                  background=[("selected", "#854d0e")],
                   foreground=[("selected", "#ffffff")])
 
         col_ids = [c[0] for c in DEF_COLUMNS]
@@ -972,8 +972,8 @@ class DefinitionsTab(ctk.CTkFrame):
             self._tree.heading(col, text=col, command=lambda c=col: self._sort_by(c))
             self._tree.column(col, width=width, minwidth=40, anchor=anchor, stretch=False)
 
-        self._tree.tag_configure("active",   foreground="#e0e0f0")
-        self._tree.tag_configure("inactive", foreground="#555566")
+        self._tree.tag_configure("active",   foreground="#1c1917")
+        self._tree.tag_configure("inactive", foreground="#a8a29e")
 
         self._tree.bind("<<TreeviewSelect>>", self._on_select)
         self._tree.bind("<Double-1>", lambda _: self._edit())
@@ -1178,19 +1178,19 @@ class DebtTrackerTab(ctk.CTkFrame):
         self._canvas.bind("<Configure>", self._repaint_chart)
 
         # ── Table ─────────────────────────────────────────────────────
-        table_frame = tk.Frame(self, bg="#1a1a2e")
+        table_frame = tk.Frame(self, bg="#fefce8")
         table_frame.pack(fill="both", expand=True)
 
         style = ttk.Style()
         style.configure("Debt.Treeview",
-                        background="#2b2b3b", foreground="#e0e0e0",
-                        fieldbackground="#2b2b3b", rowheight=26,
+                        background="#fefce8", foreground="#1c1917",
+                        fieldbackground="#fefce8", rowheight=26,
                         font=("Consolas", 11))
         style.configure("Debt.Treeview.Heading",
-                        background="#1f1f2e", foreground="#8ab4f8",
+                        background="#fef08a", foreground="#713f12",
                         font=("Helvetica", 11, "bold"), relief="flat")
         style.map("Debt.Treeview",
-                  background=[("selected", "#3a5a8a")],
+                  background=[("selected", "#854d0e")],
                   foreground=[("selected", "#ffffff")])
 
         vsb = ttk.Scrollbar(table_frame, orient="vertical")
@@ -1579,19 +1579,19 @@ class RegisterTab(ctk.CTkFrame):
                      width=180, height=30).pack(side="left", padx=(8, 0), pady=7)
 
         # ── Table ────────────────────────────────────────────────────
-        self._table_container = tk.Frame(self, bg="#1a1a2e")
+        self._table_container = tk.Frame(self, bg="#fefce8")
         self._table_container.pack(fill="both", expand=True)
 
         style = ttk.Style()
         style.configure("Reg.Treeview",
-                        background="#2b2b3b", foreground="#e0e0e0",
-                        fieldbackground="#2b2b3b", rowheight=26,
+                        background="#fefce8", foreground="#1c1917",
+                        fieldbackground="#fefce8", rowheight=26,
                         font=("Consolas", 11))
         style.configure("Reg.Treeview.Heading",
-                        background="#1f1f2e", foreground="#8ab4f8",
+                        background="#fef08a", foreground="#713f12",
                         font=("Helvetica", 11, "bold"), relief="flat")
         style.map("Reg.Treeview",
-                  background=[("selected", "#3a5a8a")],
+                  background=[("selected", "#854d0e")],
                   foreground=[("selected", "#ffffff")])
 
         col_ids = [c[0] for c in REG_COLUMNS]
@@ -1614,10 +1614,10 @@ class RegisterTab(ctk.CTkFrame):
             self._tree.column(col, width=width, minwidth=40, anchor=anchor, stretch=False)
 
         self._tree.tag_configure("deposit",      foreground=C["green"])
-        self._tree.tag_configure("payment",      foreground="#e0e0f0")
+        self._tree.tag_configure("payment",      foreground="#1c1917")
         self._tree.tag_configure("negative_bal", foreground=C["red"])
-        self._tree.tag_configure("linked",       background="#1e2a3e", foreground="#7dd3fc")
-        self._tree.tag_configure("reviewed",     foreground="#888899")
+        self._tree.tag_configure("linked",       background="#fde68a", foreground="#78350f")
+        self._tree.tag_configure("reviewed",     foreground="#a8a29e")
 
         self._tree.bind("<<TreeviewSelect>>", self._on_select)
         self._apply_sort_arrow()
@@ -2589,10 +2589,10 @@ class TransactionDialog(ctk.CTkToplevel):
     def _update_type_btns(self):
         t = self._type_var.get()
         self._dep_btn.configure(
-            fg_color="#3a5a8a" if t == "Deposit" else C["border"],
+            fg_color=C["blue"] if t == "Deposit" else C["border"],
             text_color=C["heading"] if t == "Deposit" else C["muted"])
         self._pay_btn.configure(
-            fg_color="#3a5a8a" if t == "Payment" else C["border"],
+            fg_color=C["blue"] if t == "Payment" else C["border"],
             text_color=C["heading"] if t == "Payment" else C["muted"])
 
     def _save(self):
@@ -2885,21 +2885,21 @@ class LinkBillDialog(ctk.CTkToplevel):
                      placeholder_text="🔍  description or amount...",
                      width=200, height=26).pack(side="right", padx=(0, 8))
 
-        container = tk.Frame(self, bg="#1a1a2e")
+        container = tk.Frame(self, bg="#fefce8")
         container.pack(fill="both", expand=True, padx=8, pady=(4, 0))
 
         cols = [("Month", 90), ("Description", 240), ("Amount", 95),
                 ("Due Date", 95), ("Funded?", 65)]
         style = ttk.Style()
         style.configure("Link.Treeview",
-                        background="#2b2b3b", foreground="#e0e0e0",
-                        fieldbackground="#2b2b3b", rowheight=26,
+                        background="#fefce8", foreground="#1c1917",
+                        fieldbackground="#fefce8", rowheight=26,
                         font=("Consolas", 11))
         style.configure("Link.Treeview.Heading",
-                        background="#1f1f2e", foreground="#8ab4f8",
+                        background="#fef08a", foreground="#713f12",
                         font=("Helvetica", 11, "bold"), relief="flat")
         style.map("Link.Treeview",
-                  background=[("selected", "#3a5a8a")],
+                  background=[("selected", "#854d0e")],
                   foreground=[("selected", "#ffffff")])
 
         vsb = ttk.Scrollbar(container, orient="vertical")
@@ -3068,7 +3068,7 @@ class MoneyTrackerApp(ctk.CTk):
         self.refresh()
 
     def _build_ui(self):
-        header = ctk.CTkFrame(self, height=52, corner_radius=0, fg_color="#1a1a2e")
+        header = ctk.CTkFrame(self, height=52, corner_radius=0, fg_color=C["card2"])
         header.pack(fill="x", side="top")
         header.pack_propagate(False)
         header.columnconfigure(0, weight=1)
@@ -3096,8 +3096,8 @@ class MoneyTrackerApp(ctk.CTk):
             btn = ctk.CTkButton(
                 tab_group, text=name, width=130, height=30,
                 corner_radius=6,
-                fg_color="#3a5a8a", hover_color="#4a6a9a",
-                text_color=C["heading"],
+                fg_color=C["border"], hover_color=C["yellow"],
+                text_color=C["text"],
                 font=ctk.CTkFont(size=13),
                 command=lambda n=name: self._switch_tab(n),
             )
@@ -3163,7 +3163,7 @@ class MoneyTrackerApp(ctk.CTk):
     def _update_tab_btn_styles(self):
         for name, btn in self._tab_btns.items():
             if name == self._active_tab:
-                btn.configure(fg_color="#3a5a8a", text_color=C["heading"])
+                btn.configure(fg_color=C["blue"], text_color="#ffffff")
             else:
                 btn.configure(fg_color=C["card2"], text_color=C["muted"])
 

@@ -90,7 +90,7 @@ python3 wipe.py    # interactive: wipe instances only, or everything
   - Changes when: CSV imported (bank_balance updates), or bills funded/unfunded on Dashboard
   - Does NOT change when linking a transaction to an unfunded bill — the bank_balance already reflects the payment at import time; linking is bookkeeping only
 - **Funding enforcement**: `Mark Funded` and `All Funded` check Safe2Spend before writing; blocked with flash message if insufficient; $0 bills skip the check
-- **Tab switching**: no CTkTabview — manual frame-swap via `_switch_tab()`; "Dashboard" / "Definitions" / "Debt" / "Register" buttons centered in header; active tab highlighted in blue, inactive in `C["card2"]`
+- **Tab switching**: no CTkTabview — manual frame-swap via `_switch_tab()`; "Dashboard" / "Definitions" / "Debt" / "Register" buttons centered in header; active tab highlighted in amber (`C["blue"]`), inactive in `C["border"]`
 - **Header**: 💰 emoji (size 36) on left and right ends; tab buttons centered via 3-column grid layout; window title is "Bill Tracker"
 - **`self._register` is a reserved name** on `ctk.CTk` (shadows tkinter's internal `_register()` method) — the Register tab instance is stored as `self._reg_tab`
 
@@ -127,7 +127,7 @@ python3 wipe.py    # interactive: wipe instances only, or everything
 - **Month nav bar** (below info bar): ◀ [Month YYYY] ▶ All
   - Defaults to current calendar month on launch; ◀/▶ navigate only to months that have transactions (no empty months, arrows disabled at edges)
   - If current month has no transactions, snaps to nearest earlier month that does
-  - "All" button (blue when active) drops the month filter and shows all transactions
+  - "All" button (amber when active) drops the month filter and shows all transactions
   - `_reg_month` (YYYY-MM string or None) drives the filter; `_reg_all_months` is a sorted list of months derived from loaded transactions
   - Month filter is the outermost filter — Linked/Unlinked, Reviewed/Unreviewed, and search all apply on top of it
 - **Toolbar left**: ⬆ Import CSV | 🔗 Link to Bill | Unlink | ✓ Review | 📋 Create Bill | ⚠ Delete All | search box
@@ -135,13 +135,13 @@ python3 wipe.py    # interactive: wipe instances only, or everything
 - **Table columns**: Rev | Txn # | Date | Description | Memo | Debit | Credit | Balance | Check # | Bill
   - Balance column = `bank_balance` from CSV (the bank's own running balance per row)
   - Bill column = linked bill instance description (blank if unlinked)
-  - Deposit rows: green; linked rows: blue tint; reviewed rows: muted foreground; negative balance: red
+  - Deposit rows: green; linked rows: amber tint; reviewed rows: muted foreground; negative balance: red
 - **CSV import**: `parse_bank_csv(path)` → dedup by `(transaction_number, date)` composite key (rows with a txn number) or `(date, type, amount, description)` fingerprint (rows without); new rows always get `reviewed=0`; flash shows "Imported N (M duplicates skipped)"
 - **Review toggle** (`✓ Review`): toggles `reviewed` flag; after toggling, selection auto-advances to the next row in current display order — if the toggled row disappears from the filter view, the row at the same index becomes selected; if it stays, selection moves one down
 - **Link-to-Bill flow**: select a Payment transaction → click 🔗 Link to Bill → `LinkBillDialog` opens
   - Default view: bills from the same month as the transaction, sorted by closest amount match
   - Search box filters by description or amount in real time
-  - "Show All" button (blue when active) reveals all unlinked+unpaid bills across all months
+  - "Show All" button (amber when active) reveals all unlinked+unpaid bills across all months
   - Filter label shows "Showing X of Y bills — [Month], by amount match"
   - On link: sets `transaction_id`, `funded=1`, `status='Paid'`, `date_paid=today`, `soft_pay=0`
 - **Unlink**: clears `transaction_id`, sets `status='Due'`, `funded=0`

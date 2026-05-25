@@ -27,9 +27,9 @@ python3 wipe.py    # interactive: wipe instances only, or everything
 
 | File | Purpose |
 |------|---------|
-| `db.py` | All SQLite access — six tables, see schema below |
-| `calc.py` | Pure functions: `annotate_instances()`, `calculate_summary()`, `funded_through_parts()` |
-| `app.py` | customtkinter GUI — 4 tabs: Dashboard, Definitions, Debt, Register |
+| `db.py` | All SQLite access — eight tables, see schema below |
+| `calc.py` | Pure functions: `annotate_instances()`, `calculate_summary()`, `funded_through_parts()`, `compute_nw_metrics()`, `compute_debt_summary()` |
+| `app.py` | customtkinter GUI — 4 tabs: Dashboard, Definitions, Register, Accounts |
 | `seed.py` | One-time seeder using `tests/fixtures.py` sample data |
 | `wipe.py` | Interactive wipe utility |
 | `tests/fixtures.py` | 19 sample definitions + expected totals (SAMPLE_JUNE_TOTAL, SAMPLE_MAY_TOTAL) |
@@ -72,8 +72,22 @@ python3 wipe.py    # interactive: wipe instances only, or everything
 
 **`account_settings`** — single-row table (id=1) for the checking account
 - `account_name`, `starting_balance` (REAL), `as_of_date` (MM/DD/YYYY)
-- Read/written via `db.get_account_settings()` / `db.set_account_settings()`
+- `nw_start_date` (MM/DD/YYYY) — day-0 anchor for NW CSS calculations
+- `cash_goal` (REAL) — target cash balance for goal progress bar
+- `investment_haircut` (REAL, default 0.65) — multiplier on investments for NW calculation
+- Read/written via `db.get_account_settings()` / `db.set_account_settings()`; NW fields via `db.get_nw_settings()` / `db.set_nw_settings()`
 - Note: `buffer` column exists in DB from a prior migration but is no longer used — Safe2Spend has no buffer
+
+**`accounts`** — one row per named account
+- `id`, `name`, `category` (`"Cash"` / `"Investments"` / `"Credit Cards"` / `"Loans"`), `active` (0/1), `sort_order`
+- `debt_id` — FK → `debts.id`; NULL for non-debt accounts; when set, `log_account_balance()` also upserts `debt_balances`
+- `register_linked` (0/1) — exactly one Cash account may be marked; its balance auto-syncs from `register_transactions.bank_balance` on every refresh via `db.sync_register_account()`
+
+**`account_balances`** — balance snapshots for each account
+- `id`, `account_id` (FK → `accounts.id`), `date` (MM/DD/YYYY), `balance` (REAL)
+- No UNIQUE constraint — multiple entries per account per date allowed; queries use most recent entry
+- `db.get_accounts()` JOINs with `debts` to surface `debt_interest_rate`, `debt_monthly_payment`, `debt_payoff_date` for linked accounts
+- `db.delete_account()` cascades: also deletes the linked debt + debt_balances rows when `debt_id` is set
 
 ## Key concepts
 
@@ -90,7 +104,7 @@ python3 wipe.py    # interactive: wipe instances only, or everything
   - Changes when: CSV imported (bank_balance updates), or bills funded/unfunded on Dashboard
   - Does NOT change when linking a transaction to an unfunded bill — the bank_balance already reflects the payment at import time; linking is bookkeeping only
 - **Funding enforcement**: `Mark Funded` and `All Funded` check Safe2Spend before writing; blocked with flash message if insufficient; $0 bills skip the check
-- **Tab switching**: no CTkTabview — manual frame-swap via `_switch_tab()`; "Dashboard" / "Definitions" / "Debt" / "Register" buttons centered in header; active tab highlighted in amber (`C["blue"]`), inactive in `C["border"]`
+- **Tab switching**: no CTkTabview — manual frame-swap via `_switch_tab()`; "Bills" / "Bill List" / "Register" / "Accounts" buttons centered in header; active tab highlighted in amber (`C["blue"]`), inactive in `C["border"]`
 - **Header**: 💰 emoji (size 36) on left and right ends; tab buttons centered via 3-column grid layout; window title is "Bill Tracker"
 - **`self._register` is a reserved name** on `ctk.CTk` (shadows tkinter's internal `_register()` method) — the Register tab instance is stored as `self._reg_tab`
 
@@ -157,12 +171,28 @@ python3 wipe.py    # interactive: wipe instances only, or everything
 ## Definitions tab (`DefinitionsTab`)
 - Table is sortable by column heading click; search box filters live across Description, Frequency, and Notes
 
-## Debt tab (`DebtTrackerTab`)
-- Summary card at top: Total Debt / Total Monthly Payments / Years Until Debt Free
-- Toolbar: Add/Edit/Delete; clicking a debt row opens `BalanceDialog` to log balance for current month
-- Chart (`tk.Canvas`) toggles between Total and Per Debt trend lines; table is sortable by column heading click
-- **Debt balance workflow**: one `debt_balances` row per debt per month; multiple updates in same month overwrite (last write wins)
-- **Years Until Debt Free**: derived from latest `payoff_date` across all debts; shows "N/A" if any debt has no payoff date
+## Accounts tab (`AccountsTab`)
+- **Layout**: `tk.PanedWindow` (orient="vertical") splits the tab into a collapsible top summary section and the account list below; draggable sash starts at 50/50; sash position persisted to settings JSON on close and restored on launch (`acct_sash_y` key)
+- **▲ Hide Summary / ▼ Show Summary** toggle in toolbar collapses/restores the top section; sash position is saved before collapsing and restored on show
+- **Top section** contains (top to bottom):
+  - **NW summary card** (left, fixed 320px wide): Net Worth, Day N · ✅/⚠️ status, NW/Assets/Debt since-start, Goals progress bars (Cash Goal %, Debt Reduction %)
+  - **Charts card** (right, expands): Net Worth Trend chart (130px `tk.Canvas`) + Debt Balance Trend chart (130px `tk.Canvas`) with Per Debt / Total toggle
+  - **Debt summary row** (full-width below top panel): Total Debt | Monthly Payments | Years Until Debt Free
+- **Toolbar**: `+ Add Account` | `✎ Edit` | `🗑 Delete` | `📈 Log Balance` | `▲ Hide Summary` | `⚙ Settings`
+  - `Log Balance` disabled for the register-linked account (balance auto-syncs)
+- **Account list** (bottom pane): grouped treeview by category (Cash / Investments / Credit Cards / Loans)
+  - Columns: Account | Balance | Last Updated | Rate | Monthly Pmt | Payoff Date | Days Left
+  - Rate/Monthly Pmt/Payoff Date/Days Left only populate for CC/Loan rows with a linked debt
+  - Category header rows show category name + total balance
+- **AccountDialog**: `+ Add Account` / `✎ Edit`; when category is Credit Cards or Loans, shows inline debt fields (Interest Rate %, Monthly Payment, Payoff Date); on save, creates or updates the linked `debts` record automatically; `debt_id` is set on the account
+  - `Save & Add Another` button available when creating; starting balance (amount + date) available for new accounts
+  - Deleting a CC/Loan account with a linked debt cascades: removes the debt record and all `debt_balances` rows
+- **LogBalanceDialog**: date + balance entry; hint shown for liabilities ("Negative for liabilities"); if account has `debt_id`, also upserts `debt_balances` via `log_account_balance()`
+- **NWSettingsDialog** (⚙ Settings): Start Date, Cash Goal, Investment Haircut
+- **NW metrics** (`calc.compute_nw_metrics()`): Net Worth = Cash + Investments×haircut + CC + Loans; CSS = change since start date; LC = change since previous snapshot; goal %s
+- **Debt metrics** (`calc.compute_debt_summary()`): total debt, total monthly payments, years until debt free — derived from CC/Loan accounts with latest balances
+- **Debt balance write-back**: `db.log_account_balance()` automatically upserts `debt_balances` (using `abs(balance)`) when the account has a `debt_id`, keeping the debt balance history in sync
+- **register_linked account**: one Cash account (UWBC) auto-syncs its balance from the most recent `register_transactions.bank_balance` on every refresh via `db.sync_register_account()`
 
 ## Expected totals (from fixtures)
 - May 2026: 16 bills, $3,486.59 (Monthly only — no AdHoc)

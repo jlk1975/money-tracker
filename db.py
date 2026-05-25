@@ -198,6 +198,33 @@ def init_db(db_path=DEFAULT_DB):
             )
         except Exception:
             pass
+        con.execute("""
+            CREATE TABLE IF NOT EXISTS accounts (
+                id         INTEGER PRIMARY KEY AUTOINCREMENT,
+                name       TEXT    NOT NULL DEFAULT '',
+                category   TEXT    NOT NULL DEFAULT 'Cash',
+                active     INTEGER NOT NULL DEFAULT 1,
+                debt_id    INTEGER,
+                sort_order INTEGER NOT NULL DEFAULT 0
+            )
+        """)
+        con.execute("""
+            CREATE TABLE IF NOT EXISTS account_balances (
+                id         INTEGER PRIMARY KEY AUTOINCREMENT,
+                account_id INTEGER NOT NULL,
+                date       TEXT    NOT NULL DEFAULT '',
+                balance    REAL    NOT NULL DEFAULT 0
+            )
+        """)
+        for col, definition in [
+            ("nw_start_date",      "TEXT NOT NULL DEFAULT ''"),
+            ("cash_goal",          "REAL NOT NULL DEFAULT 0"),
+            ("investment_haircut", "REAL NOT NULL DEFAULT 0.65"),
+        ]:
+            try:
+                con.execute(f"ALTER TABLE account_settings ADD COLUMN {col} {definition}")
+            except Exception:
+                pass
 
 
 # ── Bill Definitions CRUD ─────────────────────────────────────────────────────
@@ -680,3 +707,171 @@ def delete_all_transactions(db_path=DEFAULT_DB):
             WHERE transaction_id IS NOT NULL
         """)
         con.execute("DELETE FROM register_transactions")
+
+
+# ── Accounts CRUD ─────────────────────────────────────────────────────────────
+
+def get_accounts(db_path=DEFAULT_DB):
+    """Return all accounts with their latest balance and date."""
+    with _conn(db_path) as con:
+        accounts = con.execute(
+            "SELECT * FROM accounts ORDER BY sort_order, id"
+        ).fetchall()
+        result = []
+        for a in accounts:
+            row = _row_to_dict(a)
+            latest = con.execute(
+                "SELECT balance, date FROM account_balances "
+                "WHERE account_id=? ORDER BY date DESC, id DESC LIMIT 1",
+                (a["id"],)
+            ).fetchone()
+            row["latest_balance"] = latest["balance"] if latest else None
+            row["latest_date"]    = latest["date"]    if latest else None
+            result.append(row)
+    return result
+
+
+def insert_account(account, db_path=DEFAULT_DB):
+    with _conn(db_path) as con:
+        max_order = con.execute(
+            "SELECT COALESCE(MAX(sort_order), 0) FROM accounts"
+        ).fetchone()[0]
+        cur = con.execute("""
+            INSERT INTO accounts (name, category, active, debt_id, sort_order)
+            VALUES (?, ?, 1, ?, ?)
+        """, (
+            account.get("name", ""),
+            account.get("category", "Cash"),
+            account.get("debt_id"),
+            max_order + 1,
+        ))
+        return cur.lastrowid
+
+
+def update_account(account_id, account, db_path=DEFAULT_DB):
+    with _conn(db_path) as con:
+        con.execute("""
+            UPDATE accounts SET name=?, category=?, active=?, debt_id=?
+            WHERE id=?
+        """, (
+            account.get("name", ""),
+            account.get("category", "Cash"),
+            account.get("active", 1),
+            account.get("debt_id"),
+            account_id,
+        ))
+
+
+def delete_account(account_id, db_path=DEFAULT_DB):
+    with _conn(db_path) as con:
+        con.execute("DELETE FROM account_balances WHERE account_id=?", (account_id,))
+        con.execute("DELETE FROM accounts WHERE id=?", (account_id,))
+
+
+def log_account_balance(account_id, entry_date, balance, db_path=DEFAULT_DB):
+    """Insert a balance snapshot; also writes back to debt_balances if account is debt-linked."""
+    with _conn(db_path) as con:
+        con.execute(
+            "INSERT INTO account_balances (account_id, date, balance) VALUES (?, ?, ?)",
+            (account_id, entry_date, balance)
+        )
+        row = con.execute(
+            "SELECT debt_id FROM accounts WHERE id=?", (account_id,)
+        ).fetchone()
+        if row and row["debt_id"]:
+            parts = entry_date.split("/")
+            month_key = f"{parts[2]}-{parts[0]}"
+            con.execute(
+                "INSERT OR REPLACE INTO debt_balances (debt_id, month_key, balance) VALUES (?, ?, ?)",
+                (row["debt_id"], month_key, abs(balance))
+            )
+
+
+def get_account_balance_history(account_id, db_path=DEFAULT_DB):
+    """Return full balance history for one account, oldest first."""
+    with _conn(db_path) as con:
+        rows = con.execute(
+            "SELECT date, balance FROM account_balances WHERE account_id=? ORDER BY date, id",
+            (account_id,)
+        ).fetchall()
+    return [_row_to_dict(r) for r in rows]
+
+
+def get_nw_history(db_path=DEFAULT_DB):
+    """Return list of {date, cash, investments, credit_cards, loans} for all snapshot dates."""
+    from collections import defaultdict
+
+    with _conn(db_path) as con:
+        accounts = [_row_to_dict(r) for r in con.execute(
+            "SELECT id, category FROM accounts WHERE active=1"
+        ).fetchall()]
+        balances = [_row_to_dict(r) for r in con.execute(
+            "SELECT account_id, date, balance FROM account_balances ORDER BY date, id"
+        ).fetchall()]
+
+    if not balances or not accounts:
+        return []
+
+    account_map = {a["id"]: a["category"] for a in accounts}
+
+    by_account = defaultdict(list)
+    for b in balances:
+        by_account[b["account_id"]].append((b["date"], b["balance"]))
+
+    dates = sorted(set(b["date"] for b in balances))
+
+    result = []
+    for snap_date in dates:
+        cash = investments = credit_cards = loans = 0.0
+        for acc_id, category in account_map.items():
+            relevant = [(d, bal) for d, bal in by_account.get(acc_id, []) if d <= snap_date]
+            if not relevant:
+                continue
+            bal = sorted(relevant, key=lambda x: x[0])[-1][1]
+            if category == "Cash":
+                cash += bal
+            elif category == "Investments":
+                investments += bal
+            elif category == "Credit Cards":
+                credit_cards += bal
+            elif category == "Loans":
+                loans += bal
+        result.append({
+            "date": snap_date,
+            "cash": cash,
+            "investments": investments,
+            "credit_cards": credit_cards,
+            "loans": loans,
+        })
+    return result
+
+
+# ── NW Settings ───────────────────────────────────────────────────────────────
+
+def get_nw_settings(db_path=DEFAULT_DB):
+    with _conn(db_path) as con:
+        row = con.execute("SELECT * FROM account_settings WHERE id=1").fetchone()
+    if row:
+        d = _row_to_dict(row)
+        return {
+            "nw_start_date":      d.get("nw_start_date", ""),
+            "cash_goal":          d.get("cash_goal", 0.0),
+            "investment_haircut": d.get("investment_haircut", 0.65),
+        }
+    return {"nw_start_date": "", "cash_goal": 0.0, "investment_haircut": 0.65}
+
+
+def set_nw_settings(settings, db_path=DEFAULT_DB):
+    with _conn(db_path) as con:
+        con.execute("""
+            INSERT INTO account_settings (id, nw_start_date, cash_goal, investment_haircut)
+            VALUES (1, ?, ?, ?)
+            ON CONFLICT(id) DO UPDATE SET
+                nw_start_date      = excluded.nw_start_date,
+                cash_goal          = excluded.cash_goal,
+                investment_haircut = excluded.investment_haircut
+        """, (
+            settings.get("nw_start_date", ""),
+            settings.get("cash_goal", 0.0),
+            settings.get("investment_haircut", 0.65),
+        ))

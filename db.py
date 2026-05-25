@@ -526,6 +526,26 @@ def get_all_debt_balances(db_path=DEFAULT_DB):
     return [_row_to_dict(r) for r in rows]
 
 
+def get_debt_account_balances(db_path=DEFAULT_DB):
+    """Return latest balance per CC/Loan account per month as {account_id, month_key, balance}."""
+    with _conn(db_path) as con:
+        rows = con.execute("""
+            SELECT ab.account_id,
+                   substr(ab.date, 7, 4) || '-' || substr(ab.date, 1, 2) AS month_key,
+                   ab.balance
+            FROM account_balances ab
+            JOIN accounts a ON a.id = ab.account_id
+            WHERE a.category IN ('Credit Cards', 'Loans') AND a.active = 1
+            ORDER BY ab.account_id, month_key, ab.id
+        """).fetchall()
+    # Keep only the last entry per (account_id, month_key)
+    seen = {}
+    for r in rows:
+        d = _row_to_dict(r)
+        seen[(d["account_id"], d["month_key"])] = d
+    return sorted(seen.values(), key=lambda x: x["month_key"])
+
+
 # ── Register CRUD ─────────────────────────────────────────────────────────────
 
 def load_transactions(db_path=DEFAULT_DB):
@@ -922,24 +942,21 @@ def get_nw_settings(db_path=DEFAULT_DB):
     if row:
         d = _row_to_dict(row)
         return {
-            "nw_start_date":      d.get("nw_start_date", ""),
-            "cash_goal":          d.get("cash_goal", 0.0),
-            "investment_haircut": d.get("investment_haircut", 0.65),
+            "nw_start_date": d.get("nw_start_date", ""),
+            "cash_goal":     d.get("cash_goal", 0.0),
         }
-    return {"nw_start_date": "", "cash_goal": 0.0, "investment_haircut": 0.65}
+    return {"nw_start_date": "", "cash_goal": 0.0}
 
 
 def set_nw_settings(settings, db_path=DEFAULT_DB):
     with _conn(db_path) as con:
         con.execute("""
-            INSERT INTO account_settings (id, nw_start_date, cash_goal, investment_haircut)
-            VALUES (1, ?, ?, ?)
+            INSERT INTO account_settings (id, nw_start_date, cash_goal)
+            VALUES (1, ?, ?)
             ON CONFLICT(id) DO UPDATE SET
-                nw_start_date      = excluded.nw_start_date,
-                cash_goal          = excluded.cash_goal,
-                investment_haircut = excluded.investment_haircut
+                nw_start_date = excluded.nw_start_date,
+                cash_goal     = excluded.cash_goal
         """, (
             settings.get("nw_start_date", ""),
             settings.get("cash_goal", 0.0),
-            settings.get("investment_haircut", 0.65),
         ))

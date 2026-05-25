@@ -2507,13 +2507,14 @@ class AccountsTab(ctk.CTkFrame):
         self._app      = app
         self._accounts = []
         self._nw_history = []
-        self._nw_settings = {"nw_start_date": "", "cash_goal": 0.0, "investment_haircut": 0.65}
+        self._nw_settings = {"nw_start_date": "", "cash_goal": 0.0}
         self._metrics  = None
         self._debt_metrics = None
         self._selected_id = None
         self._debt_chart_mode = "total"
         self._debt_chart_btns = {}
         self._summary_visible = True
+        self._cat_open = {c: True for c in ACCT_CATEGORIES}
 
         self._build_toolbar()
         self._build_body()
@@ -2772,6 +2773,7 @@ class AccountsTab(ctk.CTkFrame):
 
         self._tree.bind("<<TreeviewSelect>>", self._on_select)
         self._tree.bind("<Double-1>", lambda e: self._on_log())
+        self._tree.bind("<ButtonRelease-1>", self._on_tree_click)
 
     # ── Refresh ───────────────────────────────────────────────────────────────
 
@@ -2783,7 +2785,6 @@ class AccountsTab(ctk.CTkFrame):
         self._metrics = calc.compute_nw_metrics(
             self._nw_history,
             self._nw_settings["nw_start_date"],
-            self._nw_settings["investment_haircut"],
             self._nw_settings["cash_goal"],
         ) if self._nw_history else None
         self._debt_metrics = calc.compute_debt_summary(self._accounts)
@@ -2855,10 +2856,12 @@ class AccountsTab(ctk.CTkFrame):
                 a["latest_balance"] for a in accts
                 if a["latest_balance"] is not None and a.get("active", 1)
             )
+            is_open = self._cat_open.get(cat, True)
+            arrow = "▼" if is_open else "▶"
             cat_iid = f"cat_{cat}"
             self._tree.insert("", "end", iid=cat_iid,
-                              values=(cat, f"${total:,.2f}", "", "", "", "", ""),
-                              tags=("category",))
+                              values=(f"{arrow} {cat}", f"${total:,.2f}", "", "", "", "", ""),
+                              tags=("category",), open=is_open)
             for a in accts:
                 bal = a["latest_balance"]
                 bal_str = f"${bal:,.2f}" if bal is not None else "—"
@@ -2876,7 +2879,7 @@ class AccountsTab(ctk.CTkFrame):
                     pmt_str    = _fmt(pmt) if pmt else ""
                     payoff_str = pd or ""
                     days_str   = _days_until_payoff(pd)
-                self._tree.insert("", "end", iid=str(a["id"]),
+                self._tree.insert(cat_iid, "end", iid=str(a["id"]),
                                   values=(name_str, bal_str, date_str,
                                           rate_str, pmt_str, payoff_str, days_str),
                                   tags=(tag,))
@@ -2893,10 +2896,9 @@ class AccountsTab(ctk.CTkFrame):
                           fill=C["muted"], font=("Helvetica", 12))
             return
 
-        haircut = self._nw_settings["investment_haircut"]
         nw_vals = [
             calc.compute_net_worth(
-                r["cash"], r["investments"], r["credit_cards"], r["loans"], haircut
+                r["cash"], r["investments"], r["credit_cards"], r["loans"]
             )
             for r in self._nw_history
         ]
@@ -2948,15 +2950,14 @@ class AccountsTab(ctk.CTkFrame):
 
         # Collect debt balance history from accounts
         debt_accts = [a for a in self._accounts
-                      if a.get("category") in ("Credit Cards", "Loans") and a.get("debt_id")]
+                      if a.get("category") in ("Credit Cards", "Loans")]
         if not debt_accts:
             c.create_text(w // 2, h // 2,
                 text="No debt accounts yet",
                 fill=C["muted"], font=("Helvetica", 11))
             return
 
-        # Load per-debt balances from DB
-        all_balances = db.get_all_debt_balances(DB_PATH)
+        all_balances = db.get_debt_account_balances(DB_PATH)
         if not all_balances:
             c.create_text(w // 2, h // 2,
                 text="Click a debt account to log your first balance",
@@ -3003,27 +3004,28 @@ class AccountsTab(ctk.CTkFrame):
             for x, y in pts:
                 c.create_oval(x - 3, y - 3, x + 3, y + 3, fill=C["red"], outline="")
         else:
-            by_debt = {}
+            by_acct = {}
             for b in all_balances:
-                by_debt.setdefault(b["debt_id"], {})[b["month_key"]] = b["balance"]
+                by_acct.setdefault(b["account_id"], {})[b["month_key"]] = b["balance"]
             all_v = [b["balance"] for b in all_balances]
             lo, hi = min(all_v), max(all_v)
             c.create_text(pad_l - 4, pad_t, text=_fmt(hi),
                 anchor="e", fill=C["muted"], font=("Helvetica", 9))
             c.create_text(pad_l - 4, h - pad_b, text=_fmt(lo),
                 anchor="e", fill=C["muted"], font=("Helvetica", 9))
-            for ci, (debt_id, mdata) in enumerate(by_debt.items()):
+            acct_name = {a["id"]: a["name"] for a in self._accounts}
+            for ci, (acct_id, mdata) in enumerate(by_acct.items()):
                 color = self._CHART_COLORS[ci % len(self._CHART_COLORS)]
-                debt_months = [m for m in months if m in mdata]
-                if not debt_months:
+                acct_months = [m for m in months if m in mdata]
+                if not acct_months:
                     continue
-                pts = [(xp(months.index(m)), yp(mdata[m], lo, hi)) for m in debt_months]
+                pts = [(xp(months.index(m)), yp(mdata[m], lo, hi)) for m in acct_months]
                 for i in range(len(pts) - 1):
                     x0, y0 = pts[i]; x1, y1 = pts[i + 1]
                     c.create_line(x0, y0, x1, y1, fill=color, width=2)
                 for x, y in pts:
                     c.create_oval(x - 3, y - 3, x + 3, y + 3, fill=color, outline="")
-                name = next((a["name"] for a in self._accounts if a.get("debt_id") == debt_id), "")
+                name = acct_name.get(acct_id, "")
                 if name and pts:
                     lx, ly = pts[-1]
                     c.create_text(lx + 6, ly, text=name[:15],
@@ -3053,6 +3055,16 @@ class AccountsTab(ctk.CTkFrame):
         else:
             self._log_btn.configure(state="normal", text="📈 Log Balance",
                                     fg_color=C["border"], text_color=C["text"])
+
+    def _on_tree_click(self, event):
+        iid = self._tree.identify_row(event.y)
+        if iid and iid.startswith("cat_"):
+            cat = iid[4:]
+            self._cat_open[cat] = not self._cat_open.get(cat, True)
+            prev_sel = self._selected_id
+            self._refresh_tree()
+            if prev_sel and self._tree.exists(str(prev_sel)):
+                self._tree.selection_set(str(prev_sel))
 
     def _selected_account(self):
         if self._selected_id is None:
@@ -3361,10 +3373,6 @@ class LogBalanceDialog(ctk.CTkToplevel):
         self._date.pack(fill="x", padx=16, pady=(2, 8))
 
         ctk.CTkLabel(self, text="Balance", anchor="w").pack(fill="x", padx=16)
-        hint = "Negative for liabilities (e.g. -1500.00)" if account.get("category") in ("Credit Cards", "Loans") else ""
-        if hint:
-            ctk.CTkLabel(self, text=hint, text_color=C["muted"],
-                         font=ctk.CTkFont(size=11)).pack(anchor="w", padx=16)
         self._balance = ctk.CTkEntry(self, width=200)
         if account.get("latest_balance") is not None:
             self._balance.insert(0, str(account["latest_balance"]))
@@ -3399,14 +3407,13 @@ class NWSettingsDialog(ctk.CTkToplevel):
         self._on_save = on_save
         self.title("Net Worth Settings")
         self.resizable(False, False)
-        self.geometry("320x220")
+        self.geometry("320x170")
         self.after(100, self.grab_set)
         self.after(100, self.focus_set)
 
         fields = [
             ("Start Date (MM/DD/YYYY)", "nw_start_date", str(settings.get("nw_start_date", ""))),
             ("Cash Goal ($)",           "cash_goal",      str(settings.get("cash_goal", 0))),
-            ("Investment Haircut (0–1)","investment_haircut", str(settings.get("investment_haircut", 0.65))),
         ]
         self._entries = {}
         for label, key, val in fields:
@@ -3428,9 +3435,8 @@ class NWSettingsDialog(ctk.CTkToplevel):
     def _save(self):
         try:
             data = {
-                "nw_start_date":      self._entries["nw_start_date"].get().strip(),
-                "cash_goal":          float(self._entries["cash_goal"].get().strip() or 0),
-                "investment_haircut": float(self._entries["investment_haircut"].get().strip() or 0.65),
+                "nw_start_date": self._entries["nw_start_date"].get().strip(),
+                "cash_goal":     float(self._entries["cash_goal"].get().strip() or 0),
             }
         except ValueError:
             return
@@ -3524,9 +3530,9 @@ class MoneyTrackerApp(ctk.CTk):
         tab_group.grid(row=0, column=1, pady=10)
         ctk.CTkLabel(header, text="💰",
                      font=ctk.CTkFont(size=36)).grid(row=0, column=2, sticky="e", padx=18, pady=8)
-        for name in ("Bills", "Bill List", "Register", "Accounts"):
+        for name in ("Bills", "Bill List", "Register", "Accounts", "Insurance", "Legal"):
             btn = ctk.CTkButton(
-                tab_group, text=name, width=130, height=30,
+                tab_group, text=name, width=90, height=30,
                 corner_radius=6,
                 fg_color=C["border"], hover_color=C["yellow"],
                 text_color=C["text"],
@@ -3552,6 +3558,14 @@ class MoneyTrackerApp(ctk.CTk):
             command=self._restore_db,
         ).pack(side="left", padx=(4, 4))
 
+        ctk.CTkButton(
+            tab_group, text="📊", width=36, height=30,
+            corner_radius=6,
+            fg_color=C["border"], hover_color=C["card2"],
+            font=ctk.CTkFont(family="Noto Color Emoji", size=16),
+            command=lambda: None,
+        ).pack(side="left", padx=(4, 4))
+
         self._status_var = tk.StringVar(value="Loading…")
         status_bar = ctk.CTkFrame(self, height=26, corner_radius=0,
                                   fg_color=("gray85", "gray20"))
@@ -3571,6 +3585,14 @@ class MoneyTrackerApp(ctk.CTk):
         self._reg_tab      = RegisterTab(content, self)
         self._accounts_tab = AccountsTab(content, self)
 
+        def _placeholder(label):
+            f = ctk.CTkFrame(content, fg_color=C["bg"], corner_radius=0)
+            ctk.CTkLabel(f, text=label, font=ctk.CTkFont(size=22),
+                         text_color=C["muted"]).place(relx=0.5, rely=0.5, anchor="center")
+            return f
+        self._insurance_tab = _placeholder("Insurance — coming soon")
+        self._legal_tab     = _placeholder("Legal — coming soon")
+
         self._active_tab = "Bills"
         self._update_tab_btn_styles()
 
@@ -3578,18 +3600,18 @@ class MoneyTrackerApp(ctk.CTk):
         if name == self._active_tab:
             return
         self._active_tab = name
-        self._dashboard.pack_forget()
-        self._defs.pack_forget()
-        self._reg_tab.pack_forget()
-        self._accounts_tab.pack_forget()
-        if name == "Bills":
-            self._dashboard.pack(fill="both", expand=True)
-        elif name == "Bill List":
-            self._defs.pack(fill="both", expand=True)
-        elif name == "Register":
-            self._reg_tab.pack(fill="both", expand=True)
-        else:
-            self._accounts_tab.pack(fill="both", expand=True)
+        for frame in (self._dashboard, self._defs, self._reg_tab,
+                      self._accounts_tab, self._insurance_tab, self._legal_tab):
+            frame.pack_forget()
+        tab_map = {
+            "Bills":     self._dashboard,
+            "Bill List": self._defs,
+            "Register":  self._reg_tab,
+            "Accounts":  self._accounts_tab,
+            "Insurance": self._insurance_tab,
+            "Legal":     self._legal_tab,
+        }
+        tab_map[name].pack(fill="both", expand=True)
         self._update_tab_btn_styles()
 
     def _update_tab_btn_styles(self):

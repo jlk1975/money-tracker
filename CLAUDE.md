@@ -74,7 +74,7 @@ python3 wipe.py    # interactive: wipe instances only, or everything
 - `account_name`, `starting_balance` (REAL), `as_of_date` (MM/DD/YYYY)
 - `nw_start_date` (MM/DD/YYYY) — day-0 anchor for NW CSS calculations
 - `cash_goal` (REAL) — target cash balance for goal progress bar
-- `investment_haircut` (REAL, default 0.65) — multiplier on investments for NW calculation
+- `investment_haircut` (REAL, default 0.65) — column exists in DB but is no longer used; NW uses full investment values
 - Read/written via `db.get_account_settings()` / `db.set_account_settings()`; NW fields via `db.get_nw_settings()` / `db.set_nw_settings()`
 - Note: `buffer` column exists in DB from a prior migration but is no longer used — Safe2Spend has no buffer
 
@@ -104,8 +104,8 @@ python3 wipe.py    # interactive: wipe instances only, or everything
   - Changes when: CSV imported (bank_balance updates), or bills funded/unfunded on Dashboard
   - Does NOT change when linking a transaction to an unfunded bill — the bank_balance already reflects the payment at import time; linking is bookkeeping only
 - **Funding enforcement**: `Mark Funded` and `All Funded` check Safe2Spend before writing; blocked with flash message if insufficient; $0 bills skip the check
-- **Tab switching**: no CTkTabview — manual frame-swap via `_switch_tab()`; "Bills" / "Bill List" / "Register" / "Accounts" buttons centered in header; active tab highlighted in amber (`C["blue"]`), inactive in `C["border"]`
-- **Header**: 💰 emoji (size 36) on left and right ends; tab buttons centered via 3-column grid layout; window title is "Bill Tracker"
+- **Tab switching**: no CTkTabview — manual frame-swap via `_switch_tab()`; "Bills" / "Bill List" / "Register" / "Accounts" / "Insurance" / "Legal" buttons centered in header (width=90); active tab highlighted in amber (`C["blue"]`), inactive in `C["border"]`; Insurance and Legal are placeholder tabs (coming soon)
+- **Header**: 💰 emoji (size 36) on left and right ends; tab buttons centered via 3-column grid layout; window title is "Bill Tracker"; icon buttons (💾 backup, ⬇ restore, 📊 report placeholder) to the right of tab buttons; 📊 uses `family="Noto Color Emoji"` for color rendering
 - **`self._register` is a reserved name** on `ctk.CTk` (shadows tkinter's internal `_register()` method) — the Register tab instance is stored as `self._reg_tab`
 
 ## Dashboard tab (`CombinedDashboard`)
@@ -187,9 +187,11 @@ python3 wipe.py    # interactive: wipe instances only, or everything
 - **AccountDialog**: `+ Add Account` / `✎ Edit`; when category is Credit Cards or Loans, shows inline debt fields (Interest Rate %, Monthly Payment, Payoff Date); on save, creates or updates the linked `debts` record automatically; `debt_id` is set on the account
   - `Save & Add Another` button available when creating; starting balance (amount + date) available for new accounts
   - Deleting a CC/Loan account with a linked debt cascades: removes the debt record and all `debt_balances` rows
-- **LogBalanceDialog**: date + balance entry; hint shown for liabilities ("Negative for liabilities"); if account has `debt_id`, also upserts `debt_balances` via `log_account_balance()`
+- **LogBalanceDialog**: date + balance entry; enter positive balances for all accounts including liabilities; if account has `debt_id`, also upserts `debt_balances` via `log_account_balance()`
 - **NWSettingsDialog** (⚙ Settings): Start Date, Cash Goal, Investment Haircut
-- **NW metrics** (`calc.compute_nw_metrics()`): Net Worth = Cash + Investments×haircut + CC + Loans; CSS = change since start date; LC = change since previous snapshot; goal %s
+- **NW metrics** (`calc.compute_nw_metrics()`): Net Worth = Cash + Investments − CC − Loans (all at full value, no haircut); CSS = change since start date; LC = change since previous snapshot; goal %s
+- **Debt Balance Trend chart**: reads from `account_balances` directly via `db.get_debt_account_balances()` (not `debt_balances`); no `debt_id` required on accounts; keyed by `account_id` in Per Debt mode
+- **Account category rows**: collapsible — click a category header row to toggle; state tracked in `_cat_open` dict; ▼/▶ arrows prepended to category label
 - **Debt metrics** (`calc.compute_debt_summary()`): total debt, total monthly payments, years until debt free — derived from CC/Loan accounts with latest balances
 - **Debt balance write-back**: `db.log_account_balance()` automatically upserts `debt_balances` (using `abs(balance)`) when the account has a `debt_id`, keeping the debt balance history in sync
 - **register_linked account**: one Cash account (UWBC) auto-syncs its balance from the most recent `register_transactions.bank_balance` on every refresh via `db.sync_register_account()`

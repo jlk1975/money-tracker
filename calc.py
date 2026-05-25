@@ -62,11 +62,11 @@ def funded_through_parts(instances, month_key):
     return (days_str, f"Funded through {funded_through_date.strftime('%b %-d')}")
 
 
-def compute_net_worth(cash, investments, credit_cards, loans, haircut=0.65):
-    return cash + (investments * haircut) + credit_cards + loans
+def compute_net_worth(cash, investments, credit_cards, loans):
+    return cash + investments - credit_cards - loans
 
 
-def compute_nw_metrics(nw_history, start_date, haircut, cash_goal):
+def compute_nw_metrics(nw_history, start_date, cash_goal):
     """Return a dict of display metrics derived from nw_history.
 
     nw_history: list of {date, cash, investments, credit_cards, loans} dicts,
@@ -82,7 +82,7 @@ def compute_nw_metrics(nw_history, start_date, haircut, cash_goal):
     credit_cards = latest["credit_cards"]
     loans        = latest["loans"]
     bad_debt     = credit_cards + loans
-    nw_current   = compute_net_worth(cash, investments, credit_cards, loans, haircut)
+    nw_current   = compute_net_worth(cash, investments, credit_cards, loans)
 
     # Find start-date snapshot (first entry on or after start_date; fallback to earliest)
     start = None
@@ -95,18 +95,18 @@ def compute_nw_metrics(nw_history, start_date, haircut, cash_goal):
         start = nw_history[0]
 
     nw_start    = compute_net_worth(start["cash"], start["investments"],
-                                    start["credit_cards"], start["loans"], haircut)
+                                    start["credit_cards"], start["loans"])
     bad_debt_start = start["credit_cards"] + start["loans"]
-    assets_start   = start["cash"] + start["investments"] * haircut
+    assets_start   = start["cash"] + start["investments"]
 
     nw_css      = nw_current - nw_start
-    assets_css  = (cash + investments * haircut) - assets_start
+    assets_css  = (cash + investments) - assets_start
     debt_css    = bad_debt - bad_debt_start
 
     # Previous snapshot for NW LC
     nw_prev = compute_net_worth(
         nw_history[-2]["cash"], nw_history[-2]["investments"],
-        nw_history[-2]["credit_cards"], nw_history[-2]["loans"], haircut
+        nw_history[-2]["credit_cards"], nw_history[-2]["loans"],
     ) if len(nw_history) >= 2 else nw_current
     nw_lc = nw_current - nw_prev
 

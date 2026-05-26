@@ -713,6 +713,7 @@ def get_safe2spend(db_path=DEFAULT_DB):
             ORDER BY SUBSTR(date,7,4) DESC,
                      SUBSTR(date,1,2) DESC,
                      SUBSTR(date,4,2) DESC,
+                     CAST(transaction_number AS INTEGER) DESC,
                      id DESC
             LIMIT 1
         """).fetchone()
@@ -823,6 +824,7 @@ def sync_register_account(db_path=DEFAULT_DB):
             ORDER BY SUBSTR(date,7,4) DESC,
                      SUBSTR(date,1,2) DESC,
                      SUBSTR(date,4,2) DESC,
+                     CAST(transaction_number AS INTEGER) DESC,
                      id DESC
             LIMIT 1
         """).fetchone()

@@ -221,6 +221,33 @@ def _days_until_payoff(payoff_date_str):
         return "—"
 
 
+# ── Tooltip ──────────────────────────────────────────────────────────────────
+
+class _Tooltip:
+    def __init__(self, widget, text):
+        self._tip = None
+        widget.bind("<Enter>", self._show)
+        widget.bind("<Leave>", self._hide)
+        widget.bind("<ButtonPress>", self._hide)
+        self._text = text
+
+    def _show(self, event):
+        if self._tip:
+            return
+        x = event.widget.winfo_rootx() + 10
+        y = event.widget.winfo_rooty() + event.widget.winfo_height() + 4
+        self._tip = tw = tk.Toplevel(event.widget)
+        tw.wm_overrideredirect(True)
+        tw.wm_geometry(f"+{x}+{y}")
+        tk.Label(tw, text=self._text, background="#1c1917", foreground="#fef9c3",
+                 font=("Helvetica", 11), padx=6, pady=3, relief="flat").pack()
+
+    def _hide(self, _event=None):
+        if self._tip:
+            self._tip.destroy()
+            self._tip = None
+
+
 # ── KPI / Progress Cards ──────────────────────────────────────────────────────
 
 class ProgressCard(ctk.CTkFrame):
@@ -385,10 +412,10 @@ class CombinedDashboard(ctk.CTkFrame):
                                           command=self._toggle_metrics)
         self._toggle_btn.pack(side="right", padx=(0, 10), pady=7)
 
-        # Middle expanding frame — 5 equal columns, evenly spaced between nav and Hide
+        # Middle expanding frame — 4 equal columns, evenly spaced between nav and Hide
         _mid = ctk.CTkFrame(self._nav_bar, fg_color="transparent")
         _mid.pack(side="left", fill="x", expand=True)
-        for _c in range(5):
+        for _c in range(4):
             _mid.columnconfigure(_c, weight=1)
 
         self._funded_through_lbl = ctk.CTkLabel(
@@ -396,9 +423,7 @@ class CombinedDashboard(ctk.CTkFrame):
             font=ctk.CTkFont(size=13, weight="bold"), text_color=C["heading"])
         self._funded_through_lbl.grid(row=0, column=0, pady=7)
 
-        _animals = ["🦊","🦁","🦄","🦜","🦚","🦋","🐉","🦝","🐸","🐯","🦈","🦩","🦦","🦔","🦕","🦖"]
-        _picked  = random.choice(_animals)
-        ctk.CTkLabel(_mid, text=_picked, font=ctk.CTkFont(size=15)).grid(
+        ctk.CTkLabel(_mid, text=self._app._animal, font=ctk.CTkFont(size=15)).grid(
             row=0, column=1, pady=7)
 
         self._month_total_lbl = ctk.CTkLabel(
@@ -418,11 +443,6 @@ class CombinedDashboard(ctk.CTkFrame):
             _prog_frame, text="Paid 0%",
             font=ctk.CTkFont(size=12), text_color=C["muted"], width=52)
         self._nav_pct_label.pack(side="left")
-
-        self._dash_s2s_label = ctk.CTkLabel(
-            _mid, text="Safe2Spend: —",
-            font=ctk.CTkFont(size=13), text_color=C["green"])
-        self._dash_s2s_label.grid(row=0, column=4, pady=7)
 
         self._metrics_panel = ctk.CTkFrame(self, fg_color="transparent")
         self._metrics_panel.pack(fill="x")
@@ -599,7 +619,6 @@ class CombinedDashboard(ctk.CTkFrame):
         s2s = db.get_safe2spend(DB_PATH)
         s2s_color = C["green"] if s2s >= 0 else C["red"]
         s2s_str = f"${s2s:,.2f}" if s2s >= 0 else f"-${abs(s2s):,.2f}"
-        self._dash_s2s_label.configure(text=f"Safe2Spend: {s2s_str}", text_color=s2s_color)
         self._app._header_s2s_label.configure(text=f"Safe2Spend: {s2s_str}", text_color=s2s_color)
 
         _paid  = summary.get("total_paid", 0)
@@ -903,6 +922,8 @@ class DefinitionsTab(ctk.CTkFrame):
         sub = ctk.CTkFrame(self, height=44, corner_radius=0, fg_color=C["card2"])
         sub.pack(fill="x")
         sub.pack_propagate(False)
+        ctk.CTkLabel(sub, text=self._app._animal, fg_color="transparent",
+                     font=ctk.CTkFont(size=15)).place(relx=0.5, rely=0.5, anchor="center")
         for label, cmd in [
             ("+ Add",           self._add),
             ("✎ Edit",          self._edit),
@@ -1155,6 +1176,9 @@ class RegisterTab(ctk.CTkFrame):
             fg_color=C["border"], hover_color=C["card2"],
             command=self._reg_set_all)
         self._reg_all_btn.pack(side="left", padx=4)
+
+        ctk.CTkLabel(nav, text=self._app._animal, fg_color="transparent",
+                     font=ctk.CTkFont(size=15)).place(relx=0.5, rely=0.5, anchor="center")
 
         # ── Toolbar ──────────────────────────────────────────────────
         sub = ctk.CTkFrame(self, height=44, corner_radius=0, fg_color=C["card2"])
@@ -2526,6 +2550,8 @@ class AccountsTab(ctk.CTkFrame):
         bar.pack(fill="x", side="top")
         bar.pack_propagate(False)
 
+        ctk.CTkLabel(bar, text=self._app._animal, fg_color="transparent",
+                     font=ctk.CTkFont(size=15)).place(relx=0.5, rely=0.5, anchor="center")
         ctk.CTkButton(bar, text="+ Add Account", width=120, height=30,
                       fg_color=C["blue"], hover_color=C["heading"],
                       text_color="#ffffff", font=ctk.CTkFont(size=13),
@@ -3461,6 +3487,8 @@ class MoneyTrackerApp(ctk.CTk):
         self._current_month = self._settings.get("last_month", default_month)
         db.generate_month_instances(self._current_month, DB_PATH)
 
+        _animals = ["🦊","🦁","🦄","🦜","🦚","🦋","🐉","🦝","🐸","🐯","🦈","🦩","🦦","🦔","🦕","🦖"]
+        self._animal = random.choice(_animals)
         self._build_ui()
         self.protocol("WM_DELETE_WINDOW", self._on_close)
         saved_widths = self._settings.get("column_widths", {})
@@ -3528,8 +3556,16 @@ class MoneyTrackerApp(ctk.CTk):
         self._tab_btns = {}
         tab_group = ctk.CTkFrame(header, fg_color="transparent")
         tab_group.grid(row=0, column=1, pady=10)
-        ctk.CTkLabel(header, text="💰",
-                     font=ctk.CTkFont(size=36)).grid(row=0, column=2, sticky="e", padx=18, pady=8)
+        _right = ctk.CTkFrame(header, fg_color="transparent")
+        _right.grid(row=0, column=2, sticky="e", padx=10, pady=4)
+        self._header_nwcss_label = ctk.CTkLabel(
+            _right, text="",
+            font=ctk.CTkFont(size=18, weight="bold"),
+            text_color=C["green"])
+        self._header_nwcss_label.pack(side="left", padx=(0, 6))
+        _Tooltip(self._header_nwcss_label, "NW Change Since Start")
+        ctk.CTkLabel(_right, text=self._animal,
+                     font=ctk.CTkFont(size=36)).pack(side="left", padx=(0, 8))
         for name in ("Bills", "Bill List", "Register", "Accounts", "Insurance", "Legal"):
             btn = ctk.CTkButton(
                 tab_group, text=name, width=90, height=30,
@@ -3587,6 +3623,11 @@ class MoneyTrackerApp(ctk.CTk):
 
         def _placeholder(label):
             f = ctk.CTkFrame(content, fg_color=C["bg"], corner_radius=0)
+            nav = ctk.CTkFrame(f, height=42, corner_radius=0, fg_color=C["card"])
+            nav.pack(fill="x")
+            nav.pack_propagate(False)
+            ctk.CTkLabel(nav, text=self._animal, fg_color="transparent",
+                         font=ctk.CTkFont(size=15)).place(relx=0.5, rely=0.5, anchor="center")
             ctk.CTkLabel(f, text=label, font=ctk.CTkFont(size=22),
                          text_color=C["muted"]).place(relx=0.5, rely=0.5, anchor="center")
             return f
@@ -3630,6 +3671,7 @@ class MoneyTrackerApp(ctk.CTk):
         self._defs.refresh(definitions)
         self._reg_tab.refresh(transactions, acct_settings)
         self._accounts_tab.refresh()
+        self._update_header_nwcss()
         self._update_status(annotated, summary)
 
     def _update_status(self, annotated, summary):
@@ -3642,6 +3684,16 @@ class MoneyTrackerApp(ctk.CTk):
             f"Due: {_fmt(summary['total_due'])}  |  "
             f"Paid: {_fmt(summary['total_paid'])}"
         )
+
+    def _update_header_nwcss(self):
+        m = self._accounts_tab._metrics
+        if not m:
+            self._header_nwcss_label.configure(text="", text_color=C["green"])
+            return
+        v = m["nw_css"]
+        sign = "+" if v >= 0 else ""
+        color = C["green"] if v >= 0 else C["red"]
+        self._header_nwcss_label.configure(text=f"{sign}${v:,.2f}", text_color=color)
 
     def _load_settings(self):
         try:

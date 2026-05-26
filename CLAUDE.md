@@ -105,16 +105,21 @@ python3 wipe.py    # interactive: wipe instances only, or everything
   - Does NOT change when linking a transaction to an unfunded bill — the bank_balance already reflects the payment at import time; linking is bookkeeping only
 - **Funding enforcement**: `Mark Funded` and `All Funded` check Safe2Spend before writing; blocked with flash message if insufficient; $0 bills skip the check
 - **Tab switching**: no CTkTabview — manual frame-swap via `_switch_tab()`; "Bills" / "Bill List" / "Register" / "Accounts" / "Insurance" / "Legal" buttons centered in header (width=90); active tab highlighted in amber (`C["blue"]`), inactive in `C["border"]`; Insurance and Legal are placeholder tabs (coming soon)
-- **Header**: 💰 emoji (size 36) on left and right ends; tab buttons centered via 3-column grid layout; window title is "Bill Tracker"; icon buttons (💾 backup, ⬇ restore, 📊 report placeholder) to the right of tab buttons; 📊 uses `family="Noto Color Emoji"` for color rendering
+- **Animal emoji in every tab**: each tab's topmost bar shows `self._app._animal` (size 15) centered via `place(relx=0.5, rely=0.5, anchor="center")` — Bills uses grid col 1 of the expanding mid frame; Bill List / Register / Accounts use `place()` on their respective toolbars/nav bars; Insurance and Legal have a dedicated `CTkFrame` (height=42, `fg_color=C["card"]`) added by `_placeholder()` solely to host the animal
+- **Header**: 💰 emoji (size 36) on left; right side is a frame (sticky="e") containing: NWCSS label (size 18 bold, green/red) + animal emoji (size 36)
+  - Animal picked once at app launch via `random.choice()` from 16-emoji pool (fox, lion, unicorn, parrot, peacock, butterfly, dragon, raccoon, frog, tiger, shark, flamingo, otter, hedgehog, brontosaurus, T-Rex); stored as `self._animal` on `MoneyTrackerApp`; Noto Color Emoji installed so they render in color
+  - NWCSS label = `m["nw_css"]` from `calc.compute_nw_metrics()`; updated via `_update_header_nwcss()` on every `refresh()`; green if ≥ 0, red if < 0; format `+$X.XX` / `-$X.XX`; blank when no NW history; hovering shows tooltip "NW Change Since Start" (`_Tooltip` class)
+  - Tab buttons centered via 3-column grid layout; window title is "Bill Tracker"; icon buttons (💾 backup, ⬇ restore, 📊 report placeholder) to the right of tab buttons; 📊 uses `family="Noto Color Emoji"` for color rendering
+- **`_Tooltip` class**: lightweight hover tooltip — binds `<Enter>`/`<Leave>`/`<ButtonPress>` on a widget; shows a `tk.Toplevel` with `overrideredirect(True)` positioned below the widget; dark bg (`#1c1917`), yellow-tinted text (`#fef9c3`)
 - **`self._register` is a reserved name** on `ctk.CTk` (shadows tkinter's internal `_register()` method) — the Register tab instance is stored as `self._reg_tab`
 
 ## Dashboard tab (`CombinedDashboard`)
 
-- **Nav bar** layout: left cluster (◀ [Month YYYY] ▶ This Month) | 5-column equal-weight middle grid | ▲ Hide Summary (right)
-  - Middle grid columns: funded-through label | 1 random animal emoji | bills info label | progress bar + Paid % | Safe2Spend
+- **Nav bar** layout: left cluster (◀ [Month YYYY] ▶ This Month) | 4-column equal-weight middle grid | ▲ Hide Summary (right)
+  - Middle grid columns: funded-through label | animal emoji | bills info label | progress bar + Paid %
   - Implemented as a `CTkFrame` packed with `fill="x", expand=True`, children in `grid` with `columnconfigure(weight=1)` — ensures even spacing regardless of window width
-  - 1 random animal picked at app launch via `random.choice()` from a pool of 16 emoji (fox, lion, unicorn, parrot, peacock, butterfly, dragon, raccoon, frog, tiger, shark, flamingo, otter, hedgehog, brontosaurus, T-Rex); Noto Color Emoji is installed so they render in color
-  - All nav bar text is size 13; Safe2Spend is green
+  - Animal uses `self._app._animal` (same pick as the header); Safe2Spend was removed from this nav bar (now lives in the global header left side only)
+  - All nav bar text is size 13
   - **Vibe filter buttons** (🌟 Good / 🤷 Meh / 💔 Regret) sit to the right of "This Month" in the nav bar; toggle `_vibe_filter` set; active = color-highlighted, inactive = `C["border"]`
 - **Metrics panel** (collapsible): 2 rows of 4 KPI widgets
   - Row 1: `VibeBarsCard`, Payment Progress, Paid, Due

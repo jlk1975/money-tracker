@@ -1283,9 +1283,14 @@ class RegisterTab(ctk.CTkFrame):
             d = t.get("date", "")
             try:
                 m, day, y = d.split("/")
-                return (int(y), int(m), int(day), t["id"])
+                txn_num = t.get("transaction_number") or ""
+                try:
+                    tnum = int(txn_num)
+                except (ValueError, TypeError):
+                    tnum = 0
+                return (int(y), int(m), int(day), tnum, t["id"])
             except Exception:
-                return (0, 0, 0, t["id"])
+                return (0, 0, 0, 0, t["id"])
         return max(txns_with_bal, key=date_key)["bank_balance"]
 
     def _update_reg_nav(self):
@@ -1531,7 +1536,7 @@ class RegisterTab(ctk.CTkFrame):
     def _import_csv(self):
         path = filedialog.askopenfilename(
             title="Import Bank CSV",
-            filetypes=[("CSV files", "*.csv"), ("Text files", "*.txt"), ("All files", "*.*")]
+            filetypes=[("CSV files", "*.csv *.CSV"), ("Text files", "*.txt"), ("All files", "*.*")]
         )
         if not path:
             return
@@ -1646,6 +1651,8 @@ def parse_bank_csv(path):
     """Parse bank CSV export into a list of transaction dicts."""
     rows = []
     with open(path, newline="", encoding="utf-8-sig") as f:
+        for _ in range(3):
+            next(f, None)
         reader = csv.DictReader(f)
         for raw in reader:
             debit  = raw.get("Amount Debit",  "").strip()

@@ -155,7 +155,7 @@ python3 wipe.py    # interactive: wipe instances only, or everything
   - Balance column = `bank_balance` from CSV (the bank's own running balance per row)
   - Bill column = linked bill instance description (blank if unlinked)
   - Deposit rows: green; linked rows: amber tint; reviewed rows: muted foreground; negative balance: red
-- **CSV import**: `parse_bank_csv(path)` → dedup by `(transaction_number, date)` composite key (rows with a txn number) or `(date, type, amount, description)` fingerprint (rows without); new rows always get `reviewed=0`; flash shows "Imported N (M duplicates skipped)"
+- **CSV import**: `parse_bank_csv(path)` → first 3 lines skipped (bank metadata); line 4 is the column header; accepts `.csv` or `.CSV`; dedup by `(transaction_number, date)` composite key (rows with a txn number) or `(date, type, amount, description)` fingerprint (rows without); new rows always get `reviewed=0`; flash shows "Imported N (M duplicates skipped)"
 - **Review toggle** (`✓ Review`): toggles `reviewed` flag; after toggling, selection auto-advances to the next row in current display order — if the toggled row disappears from the filter view, the row at the same index becomes selected; if it stays, selection moves one down
 - **Link-to-Bill flow**: select a Payment transaction → click 🔗 Link to Bill → `LinkBillDialog` opens
   - Default view: bills from the same month as the transaction, sorted by closest amount match

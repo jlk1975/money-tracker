@@ -2545,6 +2545,9 @@ class AccountsTab(ctk.CTkFrame):
         self._selected_id = None
         self._metric_vals  = {}
         self._summary_visible = True
+        self._saved_sash_y = None
+        self._initial_sash_y = None
+        self._initial_summary_visible = True
         self._cat_open = {c: True for c in ACCT_CATEGORIES}
 
         self._build_toolbar()
@@ -3076,20 +3079,34 @@ class AccountsTab(ctk.CTkFrame):
         db.set_nw_settings(settings, DB_PATH)
         self.refresh()
 
+    def configure_initial_sash(self, sash_y, summary_visible):
+        self._initial_sash_y = sash_y
+        self._initial_summary_visible = summary_visible
+
     def get_sash_position(self):
+        if not self._summary_visible:
+            return self._saved_sash_y
         try:
             return self._paned.sash_coord(0)[1]
         except Exception:
             return None
 
     def set_sash_position(self, y):
-        if y and y > 0:
+        if y is not None and y > 0:
             self._paned.sash_place(0, 1, y)
 
     def _set_initial_sash(self):
         total = self._paned.winfo_height()
-        if total > 100:
-            self._paned.sash_place(0, 1, total // 2)
+        if total < 100:
+            return
+        target_y = self._initial_sash_y if self._initial_sash_y is not None else total // 2
+        if not self._initial_summary_visible:
+            self._saved_sash_y = target_y
+            self._paned.sash_place(0, 1, 0)
+            self._summary_visible = False
+            self._toggle_btn.configure(text="▼ Show Summary")
+        else:
+            self._paned.sash_place(0, 1, target_y)
 
     def _toggle_summary(self):
         if self._summary_visible:
@@ -3420,10 +3437,11 @@ class MoneyTrackerApp(ctk.CTk):
         saved_widths = self._settings.get("column_widths", {})
         if saved_widths:
             self.after(0, lambda: self._dashboard.set_column_widths(saved_widths))
+        saved_sash    = self._settings.get("acct_sash_y")
+        saved_visible = self._settings.get("acct_summary_visible", True)
+        if saved_sash is not None:
+            self._accounts_tab.configure_initial_sash(saved_sash, saved_visible)
         self.refresh()
-        saved_sash = self._settings.get("acct_sash_y")
-        if saved_sash:
-            self.after(150, lambda: self._accounts_tab.set_sash_position(saved_sash))
 
     def current_month(self):
         return self._current_month
@@ -3635,7 +3653,8 @@ class MoneyTrackerApp(ctk.CTk):
                     "last_month":       self._current_month,
                     "column_widths":    self._dashboard.get_column_widths(),
                     "geometry":         self.geometry(),
-                    "acct_sash_y":      self._accounts_tab.get_sash_position(),
+                    "acct_sash_y":           self._accounts_tab.get_sash_position(),
+                    "acct_summary_visible":  self._accounts_tab._summary_visible,
                 }, f, indent=2)
         except Exception:
             pass

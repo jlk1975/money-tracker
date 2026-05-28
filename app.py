@@ -2549,6 +2549,9 @@ class AccountsTab(ctk.CTkFrame):
         self._initial_sash_y = None
         self._initial_summary_visible = True
         self._sash_initialized = False
+        self._acct_visible = True
+        self._saved_acct_sash_y = None
+        self._initial_acct_visible = True
         self._cat_open = {c: True for c in ACCT_CATEGORIES}
 
         self._build_toolbar()
@@ -2584,6 +2587,11 @@ class AccountsTab(ctk.CTkFrame):
                       fg_color=C["border"], hover_color=C["card2"],
                       text_color=C["text"], font=ctk.CTkFont(size=13),
                       command=self._on_settings).pack(side="right", padx=(4, 10), pady=7)
+        self._toggle_acct_btn = ctk.CTkButton(bar, text="▲ Hide Accounts", width=135, height=30,
+                                              fg_color=C["border"], hover_color=C["card2"],
+                                              text_color=C["text"], font=ctk.CTkFont(size=13),
+                                              command=self._toggle_accounts)
+        self._toggle_acct_btn.pack(side="right", padx=(0, 4), pady=7)
         self._toggle_btn = ctk.CTkButton(bar, text="▲ Hide Summary", width=130, height=30,
                                          fg_color=C["border"], hover_color=C["card2"],
                                          text_color=C["text"], font=ctk.CTkFont(size=13),
@@ -2613,9 +2621,9 @@ class AccountsTab(ctk.CTkFrame):
         self._paned.add(self._summary_section, stretch="always", minsize=0)
 
         # ── Bottom pane: account list ──────────────────────────────────────────
-        acct_pane = tk.Frame(self._paned, bg=C["bg"])
-        self._build_account_list(acct_pane)
-        self._paned.add(acct_pane, stretch="always", minsize=60)
+        self._acct_pane = tk.Frame(self._paned, bg=C["bg"])
+        self._build_account_list(self._acct_pane)
+        self._paned.add(self._acct_pane, stretch="always", minsize=60)
 
         # Set sash on first Map event (tab not packed at startup, so winfo_height
         # is 1 until the user first switches to Accounts — can't use a blind timer)
@@ -3082,9 +3090,10 @@ class AccountsTab(ctk.CTkFrame):
         db.set_nw_settings(settings, DB_PATH)
         self.refresh()
 
-    def configure_initial_sash(self, sash_y, summary_visible):
+    def configure_initial_sash(self, sash_y, summary_visible, acct_visible=True):
         self._initial_sash_y = sash_y
         self._initial_summary_visible = summary_visible
+        self._initial_acct_visible = acct_visible
 
     def _on_paned_map(self, _event):
         if not self._sash_initialized:
@@ -3093,6 +3102,8 @@ class AccountsTab(ctk.CTkFrame):
     def get_sash_position(self):
         if not self._summary_visible:
             return self._saved_sash_y
+        if not self._acct_visible:
+            return self._saved_acct_sash_y
         try:
             return self._paned.sash_coord(0)[1]
         except Exception:
@@ -3116,6 +3127,12 @@ class AccountsTab(ctk.CTkFrame):
             self._toggle_btn.configure(text="▼ Show Summary")
         else:
             self._paned.sash_place(0, 1, target_y)
+        if not self._initial_acct_visible:
+            self._saved_acct_sash_y = self._paned.sash_coord(0)[1]
+            self._paned.paneconfigure(self._acct_pane, minsize=0)
+            self._paned.sash_place(0, 1, total)
+            self._acct_visible = False
+            self._toggle_acct_btn.configure(text="▼ Show Accounts")
 
     def _toggle_summary(self):
         if self._summary_visible:
@@ -3130,6 +3147,22 @@ class AccountsTab(ctk.CTkFrame):
             self._paned.sash_place(0, 1, pos)
             self._toggle_btn.configure(text="▲ Hide Summary")
         self._summary_visible = not self._summary_visible
+
+    def _toggle_accounts(self):
+        if self._acct_visible:
+            try:
+                self._saved_acct_sash_y = self._paned.sash_coord(0)[1]
+            except Exception:
+                self._saved_acct_sash_y = None
+            self._paned.paneconfigure(self._acct_pane, minsize=0)
+            self._paned.sash_place(0, 1, self._paned.winfo_height())
+            self._toggle_acct_btn.configure(text="▼ Show Accounts")
+        else:
+            self._paned.paneconfigure(self._acct_pane, minsize=60)
+            pos = self._saved_acct_sash_y or (self._paned.winfo_height() // 2)
+            self._paned.sash_place(0, 1, pos)
+            self._toggle_acct_btn.configure(text="▲ Hide Accounts")
+        self._acct_visible = not self._acct_visible
 
 
 # ── Account dialogs ───────────────────────────────────────────────────────────
@@ -3446,10 +3479,11 @@ class MoneyTrackerApp(ctk.CTk):
         saved_widths = self._settings.get("column_widths", {})
         if saved_widths:
             self.after(0, lambda: self._dashboard.set_column_widths(saved_widths))
-        saved_sash    = self._settings.get("acct_sash_y")
-        saved_visible = self._settings.get("acct_summary_visible", True)
-        if saved_sash is not None:
-            self._accounts_tab.configure_initial_sash(saved_sash, saved_visible)
+        self._accounts_tab.configure_initial_sash(
+            self._settings.get("acct_sash_y"),
+            self._settings.get("acct_summary_visible", True),
+            self._settings.get("acct_accounts_visible", True),
+        )
         self.refresh()
 
     def current_month(self):
@@ -3662,8 +3696,9 @@ class MoneyTrackerApp(ctk.CTk):
                     "last_month":       self._current_month,
                     "column_widths":    self._dashboard.get_column_widths(),
                     "geometry":         self.geometry(),
-                    "acct_sash_y":           self._accounts_tab.get_sash_position(),
-                    "acct_summary_visible":  self._accounts_tab._summary_visible,
+                    "acct_sash_y":            self._accounts_tab.get_sash_position(),
+                    "acct_summary_visible":   self._accounts_tab._summary_visible,
+                    "acct_accounts_visible":  self._accounts_tab._acct_visible,
                 }, f, indent=2)
         except Exception:
             pass

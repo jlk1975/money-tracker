@@ -189,8 +189,9 @@ python3 wipe.py    # interactive: wipe instances only, or everything
     - Data: NW/Debt from `db.get_nw_history()` via `calc.compute_nw_period_changes()`; Spending/CF from `db.get_register_cashflow_data()` via `calc.compute_spending_metrics()`
     - Tile values stored in `self._metric_vals` dict; updated by `_refresh_metrics_panel()` on every `refresh()`
   - **Debt summary row** (full-width below top panel): Total Debt | Monthly Payments | Years Until Debt Free
-- **Toolbar**: `+ Add Account` | `✎ Edit` | `🗑 Delete` | `📈 Log Balance` | `▲ Hide Summary` | `⚙ Settings`
+- **Toolbar**: `+ Add Account` | `✎ Edit` | `🗑 Delete` | `📈 Log Balance` | `▲ Hide Accounts` | `▲ Hide Summary` | `⚙ Settings`
   - `Log Balance` disabled for the register-linked account (balance auto-syncs)
+  - `▲ Hide Accounts` / `▼ Show Accounts`: collapses/restores the bottom accounts table pane (uses `paneconfigure minsize=0` to allow full collapse); state saved to `acct_accounts_visible` in settings.json and restored on launch via `_set_initial_sash`
 - **Account list** (bottom pane): grouped treeview by category (Cash / Investments / Credit Cards / Loans)
   - Columns: Account | Balance | Last Updated | Rate | Monthly Pmt | Payoff Date | Days Left
   - Rate/Monthly Pmt/Payoff Date/Days Left only populate for CC/Loan rows with a linked debt

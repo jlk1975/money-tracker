@@ -184,7 +184,7 @@ python3 wipe.py    # interactive: wipe instances only, or everything
   - **Metrics card** (right, expands): 4 labeled groups of small KPI tiles (size-15 bold value + size-10 period label):
     - **NET WORTH CHANGE**: 1 Week | 1 Month | 3 Months | 6 Months | 1 Year (delta vs historical snapshot; green=up, red=down; "—" when no data for period)
     - **DEBT CHANGE**: same 5 periods (green=debt down, red=debt up)
-    - **SPENDING**: Past 7 Days | Past 30 Days | This Month MTD (MTD tile has sub-line: ▲/▼ $X vs prior month same-day; red=more spending, green=less)
+    - **SPENDING**: Past 7 Days | Past 14 Days | Past 30 Days | This Month MTD (MTD tile has sub-line: ▲/▼ $X vs prior month same-day; red=more spending, green=less)
     - **CASH FLOW**: This Month | Last Month (credits − debits; green=positive, red=negative)
     - Data: NW/Debt from `db.get_nw_history()` via `calc.compute_nw_period_changes()`; Spending/CF from `db.get_register_cashflow_data()` via `calc.compute_spending_metrics()`
     - Tile values stored in `self._metric_vals` dict; updated by `_refresh_metrics_panel()` on every `refresh()`

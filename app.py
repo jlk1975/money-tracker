@@ -2769,8 +2769,9 @@ class AccountsTab(ctk.CTkFrame):
         _tile_row([("debt_1w", "1 Week"), ("debt_1m", "1 Month"), ("debt_3m", "3 Months"),
                    ("debt_6m", "6 Months"), ("debt_1y", "1 Year")])
         _hdr("SPENDING")
-        _tile_row([("spend_7d", "Past 7 Days"), ("spend_30d", "Past 30 Days"),
-                   ("spend_mtd", "This Month MTD")], sub_key="spend_mtd")
+        _tile_row([("spend_7d", "Past 7 Days"), ("spend_14d", "Past 14 Days"),
+                   ("spend_30d", "Past 30 Days"), ("spend_mtd", "This Month MTD")],
+                  sub_key="spend_mtd")
         _hdr("CASH FLOW")
         _tile_row([("cf_this", "This Month"), ("cf_last", "Last Month")])
 
@@ -2964,6 +2965,7 @@ class AccountsTab(ctk.CTkFrame):
             _set(f"debt_{p}", txt, col)
 
         _set("spend_7d",  _fmt(spending_m.get("spending_7d",  0)), C["text"])
+        _set("spend_14d", _fmt(spending_m.get("spending_14d", 0)), C["text"])
         _set("spend_30d", _fmt(spending_m.get("spending_30d", 0)), C["text"])
         _set("spend_mtd", _fmt(spending_m.get("spending_mtd", 0)), C["text"])
         mtd_delta = spending_m.get("spending_mtd", 0) - spending_m.get("spending_mtd_last", 0)

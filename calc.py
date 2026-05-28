@@ -232,9 +232,10 @@ def compute_spending_metrics(transactions):
     last_month_name = date(last_year, last_month, 1).strftime("%b")
 
     cutoff_7d  = today - timedelta(days=7)
+    cutoff_14d = today - timedelta(days=14)
     cutoff_30d = today - timedelta(days=30)
 
-    spending_7d = spending_30d = 0.0
+    spending_7d = spending_14d = spending_30d = 0.0
     spending_mtd = spending_mtd_last = 0.0
     cashflow_this = cashflow_last = 0.0
 
@@ -247,6 +248,8 @@ def compute_spending_metrics(transactions):
         if typ == "Payment":
             if d >= cutoff_7d:
                 spending_7d += amt
+            if d >= cutoff_14d:
+                spending_14d += amt
             if d >= cutoff_30d:
                 spending_30d += amt
             if d.year == this_year and d.month == this_month and d.day <= today_day:
@@ -265,6 +268,7 @@ def compute_spending_metrics(transactions):
 
     return {
         "spending_7d":       spending_7d,
+        "spending_14d":      spending_14d,
         "spending_30d":      spending_30d,
         "spending_mtd":      spending_mtd,
         "spending_mtd_last": spending_mtd_last,

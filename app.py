@@ -64,8 +64,9 @@ GRID_COLUMNS = [
     ("Amount",     90),
     ("Frequency",  90),
     ("Date Paid",  90),
+    ("Notes",     150),
 ]
-LEFT_ALIGN = {"Status", "Expense", "Due Date", "Frequency", "Date Paid"}
+LEFT_ALIGN = {"Status", "Expense", "Due Date", "Frequency", "Date Paid", "Notes"}
 
 # ── Definitions tab grid ──────────────────────────────────────────────────────
 DEF_COLUMNS = [
@@ -157,6 +158,7 @@ def _merge_row(inst):
         _fmt(inst.get("amount")),
         inst.get("frequency", ""),
         inst.get("date_paid", ""),
+        inst.get("notes", ""),
     )
 
 

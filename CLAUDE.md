@@ -128,7 +128,7 @@ python3 wipe.py    # interactive: wipe instances only, or everything
 - **Toolbar**: `All Funded` / `All Unfunded` / `Funded/Unfunded` / `💸 Soft Pay` / `+ Add Bill` / `✎ Edit` / `🗑 Delete` + search box + `Show Paid (N)` / `Show Unpaid (N)` status filter toggles
   - `All Funded`: funds all unfunded visible bills (Safe2Spend check); `All Unfunded`: strips funding from all funded visible bills
   - `Soft Pay`: toggles `soft_pay` flag; bill must be funded first; does not affect status or Safe2Spend
-- **Bill table columns** (left→right): Funded | Soft | Vibe | ✓ | Status | Pay Mode | Expense | Due Date | Amount | Frequency | Date Paid
+- **Bill table columns** (left→right): Funded | Soft | Vibe | ✓ | Status | Pay Mode | Expense | Due Date | Amount | Frequency | Date Paid | Notes
   - Funded and Soft are leftmost for visibility
 - **`_draw` conflict**: `ctk.CTkFrame` calls `self._draw()` internally — never name a canvas paint method `_draw` in a CTkFrame subclass; use `_paint` instead
 - **VibeBarsCard**: tk.Canvas with `height=1` hint; draws horizontal bars — emoji left, bar, count right; spread via `_paint` on `<Configure>`

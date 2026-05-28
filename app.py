@@ -2548,6 +2548,7 @@ class AccountsTab(ctk.CTkFrame):
         self._saved_sash_y = None
         self._initial_sash_y = None
         self._initial_summary_visible = True
+        self._sash_initialized = False
         self._cat_open = {c: True for c in ACCT_CATEGORIES}
 
         self._build_toolbar()
@@ -2616,8 +2617,10 @@ class AccountsTab(ctk.CTkFrame):
         self._build_account_list(acct_pane)
         self._paned.add(acct_pane, stretch="always", minsize=60)
 
-        # Set initial sash at ~50% after first render
-        self._paned.after(100, self._set_initial_sash)
+        # Set sash on first Map event (tab not packed at startup, so winfo_height
+        # is 1 until the user first switches to Accounts — can't use a blind timer)
+        self._sash_initialized = False
+        self._paned.bind("<Map>", self._on_paned_map)
 
     # ── Summary panel ─────────────────────────────────────────────────────────
 
@@ -3083,6 +3086,10 @@ class AccountsTab(ctk.CTkFrame):
         self._initial_sash_y = sash_y
         self._initial_summary_visible = summary_visible
 
+    def _on_paned_map(self, _event):
+        if not self._sash_initialized:
+            self._paned.after(20, self._set_initial_sash)
+
     def get_sash_position(self):
         if not self._summary_visible:
             return self._saved_sash_y
@@ -3098,7 +3105,9 @@ class AccountsTab(ctk.CTkFrame):
     def _set_initial_sash(self):
         total = self._paned.winfo_height()
         if total < 100:
+            self._paned.after(50, self._set_initial_sash)
             return
+        self._sash_initialized = True
         target_y = self._initial_sash_y if self._initial_sash_y is not None else total // 2
         if not self._initial_summary_visible:
             self._saved_sash_y = target_y

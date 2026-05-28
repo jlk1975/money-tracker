@@ -104,7 +104,7 @@ python3 wipe.py    # interactive: wipe instances only, or everything
   - Changes when: CSV imported (bank_balance updates), or bills funded/unfunded on Dashboard
   - Does NOT change when linking a transaction to an unfunded bill — the bank_balance already reflects the payment at import time; linking is bookkeeping only
 - **Funding enforcement**: `Mark Funded` and `All Funded` check Safe2Spend before writing; blocked with flash message if insufficient; $0 bills skip the check
-- **Tab switching**: no CTkTabview — manual frame-swap via `_switch_tab()`; "Bills" / "Bill List" / "Register" / "Accounts" / "Insurance" / "Legal" buttons centered in header (width=90); active tab highlighted in amber (`C["blue"]`), inactive in `C["border"]`; Insurance and Legal are placeholder tabs (coming soon)
+- **Tab switching**: no CTkTabview — manual frame-swap via `_switch_tab()`; "Register" / "Bills" / "Bill List" / "Accounts" / "Insurance" / "Legal" buttons centered in header (width=90); Register is the first tab and the default on launch; active tab highlighted in amber (`C["blue"]`), inactive in `C["border"]`; Insurance and Legal are placeholder tabs (coming soon)
 - **Animal emoji in every tab**: each tab's topmost bar shows `self._app._animal` (size 15) centered via `place(relx=0.5, rely=0.5, anchor="center")` — Bills uses grid col 1 of the expanding mid frame; Bill List / Register / Accounts use `place()` on their respective toolbars/nav bars; Insurance and Legal have a dedicated `CTkFrame` (height=42, `fg_color=C["card"]`) added by `_placeholder()` solely to host the animal
 - **Header**: 💰 emoji (size 36) on left; right side is a frame (sticky="e") containing: NWCSS label (size 18 bold, green/red) + animal emoji (size 36)
   - Animal picked once at app launch via `random.choice()` from 16-emoji pool (fox, lion, unicorn, parrot, peacock, butterfly, dragon, raccoon, frog, tiger, shark, flamingo, otter, hedgehog, brontosaurus, T-Rex); stored as `self._animal` on `MoneyTrackerApp`; Noto Color Emoji installed so they render in color
@@ -138,10 +138,10 @@ python3 wipe.py    # interactive: wipe instances only, or everything
 ## Register tab (`RegisterTab`)
 
 - Stored as `self._reg_tab` on `MoneyTrackerApp`
-- **Account info bar**: Account Name | Balance | Safe2Spend | Cumulative Txns | Showing Txns | Debits/Credits totals | Last Import | ⚙ Account Settings
+- **Account info bar**: Account Name | Balance | Safe2Spend | Cumulative Txns | Showing Txns | Unreviewed Txns | Last Import | ⚙ Account Settings
   - `Cumulative Txns`: total row count in `register_transactions`
   - `Showing Txns`: count of rows currently visible after all filters; updates live
-  - `Debits: $X  Credits: $Y`: sum of Payment/Deposit amounts for currently visible rows; updates with every filter change
+  - `Unreviewed Txns`: count of unreviewed transactions across all transactions (not just visible); red when > 0, muted when 0
   - `Last Import`: "Last Import: N new" — set after each CSV import, blank until first import
 - **Month nav bar** (below info bar): ◀ [Month YYYY] ▶ All
   - Defaults to current calendar month on launch; ◀/▶ navigate only to months that have transactions (no empty months, arrows disabled at edges)
@@ -154,8 +154,8 @@ python3 wipe.py    # interactive: wipe instances only, or everything
 - **Table columns**: Rev | Txn # | Date | Description | Memo | Debit | Credit | Balance | Check # | Bill
   - Balance column = `bank_balance` from CSV (the bank's own running balance per row)
   - Bill column = linked bill instance description (blank if unlinked)
-  - Deposit rows: green; linked rows: amber tint; reviewed rows: muted foreground; negative balance: red
-- **CSV import**: `parse_bank_csv(path)` → first 3 lines skipped (bank metadata); line 4 is the column header; accepts `.csv` or `.CSV`; dedup by `(transaction_number, date)` composite key (rows with a txn number) or `(date, type, amount, description)` fingerprint (rows without); new rows always get `reviewed=0`; flash shows "Imported N (M duplicates skipped)"
+  - Deposit rows: green; linked rows: amber tint; reviewed rows: muted foreground; unreviewed rows: light red background (`#fee2e2`); negative balance: red
+- **CSV import**: `parse_bank_csv(path)` → first 3 lines skipped (bank metadata); line 4 is the column header; accepts `.csv` or `.CSV`; dedup by `(transaction_number, date)` composite key (rows with a txn number) or `(date, type, amount, description)` fingerprint (rows without); new rows always get `reviewed=0`; flash shows "Imported N (M duplicates skipped)"; file dialog opens to `~/Downloads` by default
 - **Review toggle** (`✓ Review`): toggles `reviewed` flag; after toggling, selection auto-advances to the next row in current display order — if the toggled row disappears from the filter view, the row at the same index becomes selected; if it stays, selection moves one down
 - **Link-to-Bill flow**: select a Payment transaction → click 🔗 Link to Bill → `LinkBillDialog` opens
   - Default view: bills from the same month as the transaction, sorted by closest amount match
@@ -184,11 +184,11 @@ python3 wipe.py    # interactive: wipe instances only, or everything
   - **Metrics card** (right, expands): 4 labeled groups of small KPI tiles (size-15 bold value + size-10 period label):
     - **NET WORTH CHANGE**: 1 Week | 1 Month | 3 Months | 6 Months | 1 Year (delta vs historical snapshot; green=up, red=down; "—" when no data for period)
     - **DEBT CHANGE**: same 5 periods (green=debt down, red=debt up)
-    - **SPENDING**: Past 7 Days | Past 14 Days | Past 30 Days | This Month MTD (MTD tile has sub-line: ▲/▼ $X vs prior month same-day; red=more spending, green=less)
+    - **SPENDING**: Past 7 Days | Past 14 Days | Past 30 Days | This Month (tile has sub-line: ▲/▼ $X vs prior month same-day; red=more spending, green=less)
     - **CASH FLOW**: This Month | Last Month (credits − debits; green=positive, red=negative)
     - Data: NW/Debt from `db.get_nw_history()` via `calc.compute_nw_period_changes()`; Spending/CF from `db.get_register_cashflow_data()` via `calc.compute_spending_metrics()`
     - Tile values stored in `self._metric_vals` dict; updated by `_refresh_metrics_panel()` on every `refresh()`
-  - **Debt summary row** (full-width below top panel): Total Debt | Monthly Payments | Years Until Debt Free
+  - **DEBT section** in the NW summary card (below GOALS): shows Total Debt as a single row; red when > $0, green when $0
 - **Toolbar**: `+ Add Account` | `✎ Edit` | `🗑 Delete` | `📈 Log Balance` | `▲ Hide Accounts` | `▲ Hide Summary` | `⚙ Settings`
   - `Log Balance` disabled for the register-linked account (balance auto-syncs)
   - `▲ Hide Accounts` / `▼ Show Accounts`: collapses/restores the bottom accounts table pane (uses `paneconfigure minsize=0` to allow full collapse); state saved to `acct_accounts_visible` in settings.json and restored on launch via `_set_initial_sash`

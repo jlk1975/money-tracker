@@ -1138,10 +1138,12 @@ class RegisterTab(ctk.CTkFrame):
             font=ctk.CTkFont(size=12), text_color=C["muted"])
         self._showing_txns_label.pack(side="left", padx=(12, 0))
 
-        self._totals_label = ctk.CTkLabel(
+        self._unreviewed_txns_label = ctk.CTkLabel(
             info_bar, text="",
             font=ctk.CTkFont(size=12), text_color=C["muted"])
-        self._totals_label.pack(side="left", padx=(12, 0))
+        self._unreviewed_txns_label.pack(side="left", padx=(12, 0))
+
+
 
         self._last_import_label = ctk.CTkLabel(
             info_bar, text="",
@@ -1266,6 +1268,7 @@ class RegisterTab(ctk.CTkFrame):
         self._tree.tag_configure("negative_bal", foreground=C["red"])
         self._tree.tag_configure("linked",       background="#fde68a", foreground="#78350f")
         self._tree.tag_configure("reviewed",     foreground="#a8a29e")
+        self._tree.tag_configure("unreviewed",   background="#fee2e2", foreground="#1c1917")
 
         self._tree.bind("<<TreeviewSelect>>", self._on_select)
         self._apply_sort_arrow()
@@ -1485,17 +1488,15 @@ class RegisterTab(ctk.CTkFrame):
                 tag = "linked"
             elif is_reviewed:
                 tag = "reviewed"
-            elif txn["type"] == "Deposit":
-                tag = "deposit"
             else:
-                tag = "payment"
+                tag = "unreviewed"
             self._tree.insert("", "end", iid=str(txn["id"]),
                               values=_merge_reg_row(txn), tags=(tag,))
         self._showing_txns_label.configure(text=f"Showing Txns: {len(txns):,}")
-        total_debit = sum(t["amount"] for t in txns if t["type"] == "Payment")
-        total_credit = sum(t["amount"] for t in txns if t["type"] == "Deposit")
-        self._totals_label.configure(
-            text=f"Debits: ${total_debit:,.2f}  Credits: ${total_credit:,.2f}")
+        unreviewed = sum(1 for t in self._transactions if not t.get("reviewed"))
+        self._unreviewed_txns_label.configure(
+            text=f"Unreviewed Txns: {unreviewed:,}",
+            text_color=C["red"] if unreviewed else C["muted"])
         self._apply_sort()
 
     def _sort_by(self, col):
@@ -1538,6 +1539,7 @@ class RegisterTab(ctk.CTkFrame):
     def _import_csv(self):
         path = filedialog.askopenfilename(
             title="Import Bank CSV",
+            initialdir=os.path.expanduser("~/Downloads"),
             filetypes=[("CSV files", "*.csv *.CSV"), ("Text files", "*.txt"), ("All files", "*.*")]
         )
         if not path:
@@ -2614,9 +2616,6 @@ class AccountsTab(ctk.CTkFrame):
         self._build_summary_panel(top)
         self._build_metrics_panel(top)
 
-        self._build_debt_summary(self._summary_section)
-        tk.Frame(self._summary_section, height=1, bg=C["border"]).pack(
-            fill="x", padx=12, pady=(6, 0))
 
         self._paned.add(self._summary_section, stretch="always", minsize=0)
 
@@ -2694,45 +2693,19 @@ class AccountsTab(ctk.CTkFrame):
             setattr(self, attr_bar, bar)
             setattr(self, attr_lbl, pct_lbl)
 
-    # ── Debt summary row ──────────────────────────────────────────────────────
+        tk.Frame(card, height=1, bg=C["border"]).pack(fill="x", padx=16, pady=8)
 
-    def _build_debt_summary(self, parent):
-        card = ctk.CTkFrame(parent, fg_color=C["card"], corner_radius=10,
-                            border_width=1, border_color=C["border"])
-        card.pack(fill="x", padx=12, pady=(8, 0))
-        card.grid_columnconfigure(0, weight=1)
-        card.grid_columnconfigure(1, weight=0)
-        card.grid_columnconfigure(2, weight=1)
-        card.grid_columnconfigure(3, weight=0)
-        card.grid_columnconfigure(4, weight=1)
-
-        ctk.CTkLabel(card, text="Total Debt",
-                     font=ctk.CTkFont(size=12), text_color=C["muted"],
-                     anchor="w").grid(row=0, column=0, sticky="w", padx=(18, 8), pady=(8, 0))
-        self._lbl_total_debt = ctk.CTkLabel(card, text="—",
-                     font=ctk.CTkFont(size=22, weight="bold"),
-                     text_color=C["red"], anchor="w")
-        self._lbl_total_debt.grid(row=1, column=0, sticky="w", padx=(18, 8), pady=(0, 8))
-
-        tk.Frame(card, width=1, bg=C["border"]).grid(row=0, column=1, rowspan=2, sticky="ns", pady=8)
-
-        ctk.CTkLabel(card, text="Monthly Payments",
-                     font=ctk.CTkFont(size=12), text_color=C["muted"],
-                     anchor="w").grid(row=0, column=2, sticky="w", padx=(18, 8), pady=(8, 0))
-        self._lbl_total_pmt = ctk.CTkLabel(card, text="—",
-                     font=ctk.CTkFont(size=22, weight="bold"),
-                     text_color=C["yellow"], anchor="w")
-        self._lbl_total_pmt.grid(row=1, column=2, sticky="w", padx=(18, 8), pady=(0, 8))
-
-        tk.Frame(card, width=1, bg=C["border"]).grid(row=0, column=3, rowspan=2, sticky="ns", pady=8)
-
-        ctk.CTkLabel(card, text="Years Until Debt Free",
-                     font=ctk.CTkFont(size=12), text_color=C["muted"],
-                     anchor="w").grid(row=0, column=4, sticky="w", padx=(18, 8), pady=(8, 0))
-        self._lbl_total_years = ctk.CTkLabel(card, text="—",
-                     font=ctk.CTkFont(size=22, weight="bold"),
-                     text_color=C["teal"], anchor="w")
-        self._lbl_total_years.grid(row=1, column=4, sticky="w", padx=(18, 8), pady=(0, 8))
+        # Debt
+        ctk.CTkLabel(card, text="DEBT", font=ctk.CTkFont(size=11, weight="bold"),
+                     text_color=C["muted"]).pack(anchor="w", padx=16)
+        debt_row = ctk.CTkFrame(card, fg_color="transparent")
+        debt_row.pack(fill="x", padx=16, pady=(4, 8))
+        ctk.CTkLabel(debt_row, text="Total Debt", font=ctk.CTkFont(size=12),
+                     text_color=C["muted"], anchor="w").pack(side="left")
+        self._lbl_total_debt = ctk.CTkLabel(debt_row, text="—",
+                     font=ctk.CTkFont(size=12, weight="bold"),
+                     text_color=C["red"], anchor="e")
+        self._lbl_total_debt.pack(side="right")
 
     # ── Chart panel ───────────────────────────────────────────────────────────
 
@@ -2787,7 +2760,7 @@ class AccountsTab(ctk.CTkFrame):
                    ("debt_6m", "6 Months"), ("debt_1y", "1 Year")])
         _hdr("SPENDING")
         _tile_row([("spend_7d", "Past 7 Days"), ("spend_14d", "Past 14 Days"),
-                   ("spend_30d", "Past 30 Days"), ("spend_mtd", "This Month MTD")],
+                   ("spend_30d", "Past 30 Days"), ("spend_mtd", "This Month")],
                   sub_key="spend_mtd")
         _hdr("CASH FLOW")
         _tile_row([("cf_this", "This Month"), ("cf_last", "Last Month")])
@@ -2911,10 +2884,6 @@ class AccountsTab(ctk.CTkFrame):
         self._lbl_total_debt.configure(
             text=_fmt(total_debt) if total_debt else "—",
             text_color=C["green"] if total_debt == 0 else C["red"])
-        total_pmt = d.get("total_monthly_pmt", 0)
-        self._lbl_total_pmt.configure(
-            text=_fmt(total_pmt) if total_pmt else "—")
-        self._lbl_total_years.configure(text=d.get("years_until_free", "—"))
 
     def _refresh_tree(self):
         self._tree.delete(*self._tree.get_children())
@@ -3553,7 +3522,7 @@ class MoneyTrackerApp(ctk.CTk):
         _Tooltip(self._header_nwcss_label, "NW Change Since Start")
         ctk.CTkLabel(_right, text=self._animal,
                      font=ctk.CTkFont(size=36)).pack(side="left", padx=(0, 8))
-        for name in ("Bills", "Bill List", "Register", "Accounts", "Insurance", "Legal"):
+        for name in ("Register", "Bills", "Bill List", "Accounts", "Insurance", "Legal"):
             btn = ctk.CTkButton(
                 tab_group, text=name, width=90, height=30,
                 corner_radius=6,
@@ -3602,7 +3571,6 @@ class MoneyTrackerApp(ctk.CTk):
         content.pack(fill="both", expand=True)
 
         self._dashboard = CombinedDashboard(content, self)
-        self._dashboard.pack(fill="both", expand=True)
 
         self._defs         = DefinitionsTab(content, self)
         self._reg_tab      = RegisterTab(content, self)
@@ -3621,7 +3589,8 @@ class MoneyTrackerApp(ctk.CTk):
         self._insurance_tab = _placeholder("Insurance — coming soon")
         self._legal_tab     = _placeholder("Legal — coming soon")
 
-        self._active_tab = "Bills"
+        self._active_tab = "Register"
+        self._reg_tab.pack(fill="both", expand=True)
         self._update_tab_btn_styles()
 
     def _switch_tab(self, name):

@@ -962,3 +962,12 @@ def set_nw_settings(settings, db_path=DEFAULT_DB):
             settings.get("nw_start_date", ""),
             settings.get("cash_goal", 0.0),
         ))
+
+
+def get_register_cashflow_data(db_path=DEFAULT_DB):
+    """Return list of {date, type, amount} for all register transactions."""
+    with _conn(db_path) as con:
+        rows = con.execute(
+            "SELECT date, type, amount FROM register_transactions ORDER BY date, id"
+        ).fetchall()
+    return [{"date": r[0], "type": r[1], "amount": r[2]} for r in rows]

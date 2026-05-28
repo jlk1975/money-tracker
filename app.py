@@ -2533,7 +2533,6 @@ class LinkBillDialog(ctk.CTkToplevel):
 ACCT_CATEGORIES = ["Cash", "Investments", "Credit Cards", "Loans"]
 
 class AccountsTab(ctk.CTkFrame):
-    _CHART_COLORS = ["#f87171", "#60a5fa", "#4ade80", "#fbbf24", "#c084fc", "#fb923c", "#2dd4bf"]
 
     def __init__(self, parent, app):
         super().__init__(parent, fg_color=C["bg"], corner_radius=0)
@@ -2544,8 +2543,7 @@ class AccountsTab(ctk.CTkFrame):
         self._metrics  = None
         self._debt_metrics = None
         self._selected_id = None
-        self._debt_chart_mode = "total"
-        self._debt_chart_btns = {}
+        self._metric_vals  = {}
         self._summary_visible = True
         self._cat_open = {c: True for c in ACCT_CATEGORIES}
 
@@ -2602,7 +2600,7 @@ class AccountsTab(ctk.CTkFrame):
         top = ctk.CTkFrame(self._summary_section, fg_color=C["bg"], corner_radius=0)
         top.pack(fill="x", padx=12, pady=(10, 0))
         self._build_summary_panel(top)
-        self._build_chart_panel(top)
+        self._build_metrics_panel(top)
 
         self._build_debt_summary(self._summary_section)
         tk.Frame(self._summary_section, height=1, bg=C["border"]).pack(
@@ -2724,37 +2722,57 @@ class AccountsTab(ctk.CTkFrame):
 
     # ── Chart panel ───────────────────────────────────────────────────────────
 
-    def _build_chart_panel(self, parent):
+    def _build_metrics_panel(self, parent):
         card = ctk.CTkFrame(parent, fg_color=C["card"], corner_radius=10,
                             border_width=1, border_color=C["border"])
         card.pack(side="left", fill="both", expand=True)
 
-        # Net Worth Trend
-        ctk.CTkLabel(card, text="Net Worth Trend",
-                     font=ctk.CTkFont(size=12, weight="bold"),
-                     text_color=C["heading"]).pack(anchor="w", padx=12, pady=(8, 0))
-        self._chart = tk.Canvas(card, bg=C["card"], highlightthickness=0, height=130)
-        self._chart.pack(fill="x", padx=8, pady=(4, 4))
-        self._chart.bind("<Configure>", lambda e: self._draw_nw_chart())
+        content = ctk.CTkFrame(card, fg_color="transparent")
+        content.pack(fill="both", expand=True, padx=10, pady=(4, 8))
 
-        # Debt Balance Trend
-        debt_hdr = ctk.CTkFrame(card, fg_color="transparent")
-        debt_hdr.pack(fill="x", padx=10, pady=(4, 0))
-        ctk.CTkLabel(debt_hdr, text="Debt Balance Trend",
-                     font=ctk.CTkFont(size=12, weight="bold"),
-                     text_color=C["heading"]).pack(side="left")
-        for val, label in [("per_debt", "Per Debt"), ("total", "Total")]:
-            btn = ctk.CTkButton(
-                debt_hdr, text=label, width=76, height=24,
-                fg_color=C["blue"] if val == "total" else C["border"],
-                hover_color=C["card2"],
-                command=lambda v=val: self._set_debt_chart_mode(v))
-            btn.pack(side="right", padx=3)
-            self._debt_chart_btns[val] = btn
+        def _hdr(text):
+            ctk.CTkLabel(content, text=text,
+                         font=ctk.CTkFont(size=10, weight="bold"),
+                         text_color=C["muted"], anchor="w").pack(
+                fill="x", pady=(8, 3))
 
-        self._debt_chart = tk.Canvas(card, bg=C["card"], highlightthickness=0, height=130)
-        self._debt_chart.pack(fill="x", padx=8, pady=(4, 8))
-        self._debt_chart.bind("<Configure>", lambda e: self._draw_debt_chart())
+        def _tile_row(keys_labels, sub_key=None):
+            row = ctk.CTkFrame(content, fg_color="transparent")
+            row.pack(fill="x")
+            n = len(keys_labels)
+            for i, (key, period_label) in enumerate(keys_labels):
+                tile = ctk.CTkFrame(row, fg_color=C["bg"], corner_radius=6,
+                                    border_width=1, border_color=C["border"])
+                tile.pack(side="left", fill="x", expand=True,
+                          padx=(0, 5) if i < n - 1 else 0)
+                ctk.CTkLabel(tile, text=period_label,
+                             font=ctk.CTkFont(size=10),
+                             text_color=C["muted"], anchor="w").pack(
+                    anchor="w", padx=8, pady=(5, 0))
+                val_lbl = ctk.CTkLabel(tile, text="—",
+                                       font=ctk.CTkFont(size=15, weight="bold"),
+                                       text_color=C["muted"], anchor="w")
+                val_lbl.pack(anchor="w", padx=8, pady=(1, 0))
+                self._metric_vals[key] = val_lbl
+                # Sub-line present on all tiles in rows that have one — keeps height uniform
+                sub_lbl = ctk.CTkLabel(tile, text="",
+                                       font=ctk.CTkFont(size=10),
+                                       text_color=C["muted"], anchor="w")
+                sub_lbl.pack(anchor="w", padx=8, pady=(0, 5))
+                if key == sub_key:
+                    self._metric_vals[f"{key}_sub"] = sub_lbl
+
+        _hdr("NET WORTH CHANGE")
+        _tile_row([("nw_1w", "1 Week"), ("nw_1m", "1 Month"), ("nw_3m", "3 Months"),
+                   ("nw_6m", "6 Months"), ("nw_1y", "1 Year")])
+        _hdr("DEBT CHANGE")
+        _tile_row([("debt_1w", "1 Week"), ("debt_1m", "1 Month"), ("debt_3m", "3 Months"),
+                   ("debt_6m", "6 Months"), ("debt_1y", "1 Year")])
+        _hdr("SPENDING")
+        _tile_row([("spend_7d", "Past 7 Days"), ("spend_30d", "Past 30 Days"),
+                   ("spend_mtd", "This Month MTD")], sub_key="spend_mtd")
+        _hdr("CASH FLOW")
+        _tile_row([("cf_this", "This Month"), ("cf_last", "Last Month")])
 
     # ── Account list ──────────────────────────────────────────────────────────
 
@@ -2824,11 +2842,14 @@ class AccountsTab(ctk.CTkFrame):
         ) if self._nw_history else None
         self._debt_metrics = calc.compute_debt_summary(self._accounts)
 
+        period_changes = calc.compute_nw_period_changes(self._nw_history)
+        txns           = db.get_register_cashflow_data(DB_PATH)
+        spending_m     = calc.compute_spending_metrics(txns)
+
         self._refresh_summary()
         self._refresh_debt_summary()
         self._refresh_tree()
-        self._draw_nw_chart()
-        self._draw_debt_chart()
+        self._refresh_metrics_panel(period_changes, spending_m)
 
     def _refresh_summary(self):
         m = self._metrics
@@ -2921,150 +2942,41 @@ class AccountsTab(ctk.CTkFrame):
 
     # ── Charts ────────────────────────────────────────────────────────────────
 
-    def _draw_nw_chart(self):
-        c = self._chart
-        c.delete("all")
-        w = c.winfo_width()
-        h = c.winfo_height()
-        if w < 10 or h < 10 or not self._nw_history:
-            c.create_text(w // 2, h // 2, text="No data yet",
-                          fill=C["muted"], font=("Helvetica", 12))
-            return
+    def _refresh_metrics_panel(self, period_changes, spending_m):
+        def _set(key, text, color):
+            lbl = self._metric_vals.get(key)
+            if lbl:
+                lbl.configure(text=text, text_color=color)
 
-        nw_vals = [
-            calc.compute_net_worth(
-                r["cash"], r["investments"], r["credit_cards"], r["loans"]
-            )
-            for r in self._nw_history
-        ]
+        def _fmt_delta(val, good_positive=True):
+            if val is None:
+                return "—", C["muted"]
+            if val == 0:
+                return "$0.00", C["muted"]
+            prefix = "+" if val > 0 else "-"
+            color = C["green"] if (val > 0) == good_positive else C["red"]
+            return f"{prefix}${abs(val):,.2f}", color
 
-        pad_l, pad_r, pad_t, pad_b = 60, 16, 16, 32
-        n = len(nw_vals)
-        min_v, max_v = min(nw_vals), max(nw_vals)
-        v_range = max_v - min_v or 1
+        for p in ("1w", "1m", "3m", "6m", "1y"):
+            txt, col = _fmt_delta(period_changes.get(f"nw_{p}"),   good_positive=True)
+            _set(f"nw_{p}", txt, col)
+            txt, col = _fmt_delta(period_changes.get(f"debt_{p}"), good_positive=False)
+            _set(f"debt_{p}", txt, col)
 
-        def _x(i):
-            if n == 1:
-                return pad_l + (w - pad_l - pad_r) / 2
-            return pad_l + i * (w - pad_l - pad_r) / (n - 1)
+        _set("spend_7d",  _fmt(spending_m.get("spending_7d",  0)), C["text"])
+        _set("spend_30d", _fmt(spending_m.get("spending_30d", 0)), C["text"])
+        _set("spend_mtd", _fmt(spending_m.get("spending_mtd", 0)), C["text"])
+        mtd_delta = spending_m.get("spending_mtd", 0) - spending_m.get("spending_mtd_last", 0)
+        arrow = "▲" if mtd_delta > 0 else "▼"
+        sub_color = C["red"] if mtd_delta > 0 else C["green"]
+        _set("spend_mtd_sub",
+             f"{arrow} ${abs(mtd_delta):,.2f} vs {spending_m.get('last_month_name', 'prev')}",
+             sub_color)
 
-        def _y(v):
-            return pad_t + (1 - (v - min_v) / v_range) * (h - pad_t - pad_b)
-
-        for frac, label in [(0, min_v), (0.5, (min_v + max_v) / 2), (1, max_v)]:
-            yy = pad_t + (1 - frac) * (h - pad_t - pad_b)
-            c.create_line(pad_l, yy, w - pad_r, yy, fill=C["border"], dash=(4, 4))
-            c.create_text(pad_l - 4, yy, text=f"${label:,.0f}",
-                          anchor="e", fill=C["muted"], font=("Helvetica", 9))
-
-        pts = [(_x(i), _y(v)) for i, v in enumerate(nw_vals)]
-        if len(pts) > 1:
-            flat = [coord for pt in pts for coord in pt]
-            c.create_line(*flat, fill=C["blue"], width=2, smooth=True)
-
-        label_indices = {0, n - 1} | {i for i in range(0, n, max(1, n // 6))}
-        for i, (px, py) in enumerate(pts):
-            c.create_oval(px - 3, py - 3, px + 3, py + 3,
-                          fill=C["blue"], outline=C["card"])
-            if i in label_indices:
-                c.create_text(px, h - pad_b + 4, text=self._nw_history[i]["date"],
-                              anchor="n", fill=C["muted"], font=("Helvetica", 8))
-
-    def _set_debt_chart_mode(self, mode):
-        self._debt_chart_mode = mode
-        for val, btn in self._debt_chart_btns.items():
-            btn.configure(fg_color=C["blue"] if val == mode else C["border"])
-        self._draw_debt_chart()
-
-    def _draw_debt_chart(self):
-        c = self._debt_chart
-        c.delete("all")
-        w, h = c.winfo_width(), c.winfo_height()
-        if w < 20 or h < 20:
-            return
-
-        # Collect debt balance history from accounts
-        debt_accts = [a for a in self._accounts
-                      if a.get("category") in ("Credit Cards", "Loans")]
-        if not debt_accts:
-            c.create_text(w // 2, h // 2,
-                text="No debt accounts yet",
-                fill=C["muted"], font=("Helvetica", 11))
-            return
-
-        all_balances = db.get_debt_account_balances(DB_PATH)
-        if not all_balances:
-            c.create_text(w // 2, h // 2,
-                text="Click a debt account to log your first balance",
-                fill=C["muted"], font=("Helvetica", 11))
-            return
-
-        pad_l, pad_r, pad_t, pad_b = 76, 16, 12, 28
-        cw = w - pad_l - pad_r
-        ch = h - pad_t - pad_b
-
-        months = sorted({b["month_key"] for b in all_balances})
-        nm = len(months)
-
-        def xp(i):
-            return pad_l + (i / max(nm - 1, 1)) * cw
-
-        def yp(v, lo, hi):
-            return pad_t + (1.0 - (v - lo) / (hi - lo or 1)) * ch
-
-        c.create_line(pad_l, pad_t, pad_l, h - pad_b, fill=C["border"], width=1)
-        c.create_line(pad_l, h - pad_b, w - pad_r, h - pad_b, fill=C["border"], width=1)
-
-        for i, m in enumerate(months):
-            if nm <= 8 or i % max(1, nm // 8) == 0 or i == nm - 1:
-                yr, mo = m.split("-")
-                c.create_text(xp(i), h - pad_b + 4,
-                    text=f"{MONTH_NAMES[int(mo)-1]} '{yr[2:]}",
-                    anchor="n", fill=C["muted"], font=("Helvetica", 8))
-
-        if self._debt_chart_mode == "total":
-            totals = {}
-            for b in all_balances:
-                totals[b["month_key"]] = totals.get(b["month_key"], 0) + b["balance"]
-            vals = [totals.get(m, 0) for m in months]
-            lo, hi = min(vals), max(vals)
-            c.create_text(pad_l - 4, pad_t, text=_fmt(hi),
-                anchor="e", fill=C["muted"], font=("Helvetica", 9))
-            c.create_text(pad_l - 4, h - pad_b, text=_fmt(lo),
-                anchor="e", fill=C["muted"], font=("Helvetica", 9))
-            pts = [(xp(i), yp(v, lo, hi)) for i, v in enumerate(vals)]
-            for i in range(len(pts) - 1):
-                x0, y0 = pts[i]; x1, y1 = pts[i + 1]
-                c.create_line(x0, y0, x1, y1, fill=C["red"], width=2)
-            for x, y in pts:
-                c.create_oval(x - 3, y - 3, x + 3, y + 3, fill=C["red"], outline="")
-        else:
-            by_acct = {}
-            for b in all_balances:
-                by_acct.setdefault(b["account_id"], {})[b["month_key"]] = b["balance"]
-            all_v = [b["balance"] for b in all_balances]
-            lo, hi = min(all_v), max(all_v)
-            c.create_text(pad_l - 4, pad_t, text=_fmt(hi),
-                anchor="e", fill=C["muted"], font=("Helvetica", 9))
-            c.create_text(pad_l - 4, h - pad_b, text=_fmt(lo),
-                anchor="e", fill=C["muted"], font=("Helvetica", 9))
-            acct_name = {a["id"]: a["name"] for a in self._accounts}
-            for ci, (acct_id, mdata) in enumerate(by_acct.items()):
-                color = self._CHART_COLORS[ci % len(self._CHART_COLORS)]
-                acct_months = [m for m in months if m in mdata]
-                if not acct_months:
-                    continue
-                pts = [(xp(months.index(m)), yp(mdata[m], lo, hi)) for m in acct_months]
-                for i in range(len(pts) - 1):
-                    x0, y0 = pts[i]; x1, y1 = pts[i + 1]
-                    c.create_line(x0, y0, x1, y1, fill=color, width=2)
-                for x, y in pts:
-                    c.create_oval(x - 3, y - 3, x + 3, y + 3, fill=color, outline="")
-                name = acct_name.get(acct_id, "")
-                if name and pts:
-                    lx, ly = pts[-1]
-                    c.create_text(lx + 6, ly, text=name[:15],
-                        anchor="w", fill=color, font=("Helvetica", 8))
+        txt, col = _fmt_delta(spending_m.get("cashflow_this", 0), good_positive=True)
+        _set("cf_this", txt, col)
+        txt, col = _fmt_delta(spending_m.get("cashflow_last", 0), good_positive=True)
+        _set("cf_last", txt, col)
 
     # ── Event handlers ────────────────────────────────────────────────────────
 

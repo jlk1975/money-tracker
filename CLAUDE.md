@@ -181,7 +181,13 @@ python3 wipe.py    # interactive: wipe instances only, or everything
 - **▲ Hide Summary / ▼ Show Summary** toggle in toolbar collapses/restores the top section; sash position is saved before collapsing and restored on show
 - **Top section** contains (top to bottom):
   - **NW summary card** (left, fixed 320px wide): Net Worth, Day N · ✅/⚠️ status, NW/Assets/Debt since-start, Goals progress bars (Cash Goal %, Debt Reduction %)
-  - **Charts card** (right, expands): Net Worth Trend chart (130px `tk.Canvas`) + Debt Balance Trend chart (130px `tk.Canvas`) with Per Debt / Total toggle
+  - **Metrics card** (right, expands): 4 labeled groups of small KPI tiles (size-15 bold value + size-10 period label):
+    - **NET WORTH CHANGE**: 1 Week | 1 Month | 3 Months | 6 Months | 1 Year (delta vs historical snapshot; green=up, red=down; "—" when no data for period)
+    - **DEBT CHANGE**: same 5 periods (green=debt down, red=debt up)
+    - **SPENDING**: Past 7 Days | Past 30 Days | This Month MTD (MTD tile has sub-line: ▲/▼ $X vs prior month same-day; red=more spending, green=less)
+    - **CASH FLOW**: This Month | Last Month (credits − debits; green=positive, red=negative)
+    - Data: NW/Debt from `db.get_nw_history()` via `calc.compute_nw_period_changes()`; Spending/CF from `db.get_register_cashflow_data()` via `calc.compute_spending_metrics()`
+    - Tile values stored in `self._metric_vals` dict; updated by `_refresh_metrics_panel()` on every `refresh()`
   - **Debt summary row** (full-width below top panel): Total Debt | Monthly Payments | Years Until Debt Free
 - **Toolbar**: `+ Add Account` | `✎ Edit` | `🗑 Delete` | `📈 Log Balance` | `▲ Hide Summary` | `⚙ Settings`
   - `Log Balance` disabled for the register-linked account (balance auto-syncs)
@@ -195,7 +201,6 @@ python3 wipe.py    # interactive: wipe instances only, or everything
 - **LogBalanceDialog**: date + balance entry; enter positive balances for all accounts including liabilities; if account has `debt_id`, also upserts `debt_balances` via `log_account_balance()`
 - **NWSettingsDialog** (⚙ Settings): Start Date, Cash Goal, Investment Haircut
 - **NW metrics** (`calc.compute_nw_metrics()`): Net Worth = Cash + Investments − CC − Loans (all at full value, no haircut); CSS = change since start date; LC = change since previous snapshot; goal %s
-- **Debt Balance Trend chart**: reads from `account_balances` directly via `db.get_debt_account_balances()` (not `debt_balances`); no `debt_id` required on accounts; keyed by `account_id` in Per Debt mode
 - **Account category rows**: collapsible — click a category header row to toggle; state tracked in `_cat_open` dict; ▼/▶ arrows prepended to category label
 - **Debt metrics** (`calc.compute_debt_summary()`): total debt, total monthly payments, years until debt free — derived from CC/Loan accounts with latest balances
 - **Debt balance write-back**: `db.log_account_balance()` automatically upserts `debt_balances` (using `abs(balance)`) when the account has a `debt_id`, keeping the debt balance history in sync

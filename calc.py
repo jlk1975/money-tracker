@@ -1,5 +1,5 @@
 import calendar
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 
 
 def _parse_date(date_str):
@@ -177,6 +177,100 @@ def compute_debt_summary(accounts):
         "total_debt":       total_debt,
         "total_monthly_pmt": total_monthly_pmt,
         "years_until_free": years_str,
+    }
+
+
+def compute_nw_period_changes(nw_history):
+    """Return NW and debt deltas for 1w/1m/3m/6m/1y periods.
+
+    Keys: nw_1w, nw_1m, nw_3m, nw_6m, nw_1y, debt_1w, ..., debt_1y.
+    Value is a float (positive = increased) or None when no historical data exists
+    for that period.
+    """
+    result = {f"{k}_{p}": None for k in ("nw", "debt")
+              for p in ("1w", "1m", "3m", "6m", "1y")}
+    if not nw_history or len(nw_history) < 2:
+        return result
+
+    entries = []
+    for r in nw_history:
+        d = _parse_date(r["date"])
+        if d:
+            entries.append({
+                "date": d,
+                "nw":   compute_net_worth(r["cash"], r["investments"],
+                                          r["credit_cards"], r["loans"]),
+                "debt": r["credit_cards"] + r["loans"],
+            })
+    if len(entries) < 2:
+        return result
+
+    today = date.today()
+    current = max(entries, key=lambda e: e["date"])
+    for label, days in (("1w", 7), ("1m", 30), ("3m", 91), ("6m", 182), ("1y", 365)):
+        target = today - timedelta(days=days)
+        candidates = [e for e in entries if e["date"] <= target]
+        if candidates:
+            snap = max(candidates, key=lambda e: e["date"])
+            result[f"nw_{label}"]   = current["nw"]   - snap["nw"]
+            result[f"debt_{label}"] = current["debt"] - snap["debt"]
+    return result
+
+
+def compute_spending_metrics(transactions):
+    """Compute spending and cashflow KPIs from register transaction dicts.
+
+    Each transaction: {date: MM/DD/YYYY, type: "Payment"|"Deposit", amount: float}.
+    """
+    today = date.today()
+    this_year, this_month = today.year, today.month
+    if this_month == 1:
+        last_year, last_month = this_year - 1, 12
+    else:
+        last_year, last_month = this_year, this_month - 1
+    today_day = today.day
+    last_month_name = date(last_year, last_month, 1).strftime("%b")
+
+    cutoff_7d  = today - timedelta(days=7)
+    cutoff_30d = today - timedelta(days=30)
+
+    spending_7d = spending_30d = 0.0
+    spending_mtd = spending_mtd_last = 0.0
+    cashflow_this = cashflow_last = 0.0
+
+    for t in transactions:
+        d = _parse_date(t["date"])
+        if not d:
+            continue
+        amt = t["amount"]
+        typ = t["type"]
+        if typ == "Payment":
+            if d >= cutoff_7d:
+                spending_7d += amt
+            if d >= cutoff_30d:
+                spending_30d += amt
+            if d.year == this_year and d.month == this_month and d.day <= today_day:
+                spending_mtd += amt
+            if d.year == last_year and d.month == last_month and d.day <= today_day:
+                spending_mtd_last += amt
+            if d.year == this_year and d.month == this_month:
+                cashflow_this -= amt
+            if d.year == last_year and d.month == last_month:
+                cashflow_last -= amt
+        elif typ == "Deposit":
+            if d.year == this_year and d.month == this_month:
+                cashflow_this += amt
+            if d.year == last_year and d.month == last_month:
+                cashflow_last += amt
+
+    return {
+        "spending_7d":       spending_7d,
+        "spending_30d":      spending_30d,
+        "spending_mtd":      spending_mtd,
+        "spending_mtd_last": spending_mtd_last,
+        "cashflow_this":     cashflow_this,
+        "cashflow_last":     cashflow_last,
+        "last_month_name":   last_month_name,
     }
 
 

@@ -2734,7 +2734,7 @@ class AccountsTab(ctk.CTkFrame):
             ctk.CTkLabel(content, text=text,
                          font=ctk.CTkFont(size=10, weight="bold"),
                          text_color=C["muted"], anchor="w").pack(
-                fill="x", pady=(8, 3))
+                fill="x", pady=(5, 2))
 
         def _tile_row(keys_labels, sub_key=None):
             row = ctk.CTkFrame(content, fg_color="transparent")
@@ -2754,13 +2754,16 @@ class AccountsTab(ctk.CTkFrame):
                                        text_color=C["muted"], anchor="w")
                 val_lbl.pack(anchor="w", padx=8, pady=(1, 0))
                 self._metric_vals[key] = val_lbl
-                # Sub-line present on all tiles in rows that have one — keeps height uniform
-                sub_lbl = ctk.CTkLabel(tile, text="",
-                                       font=ctk.CTkFont(size=10),
-                                       text_color=C["muted"], anchor="w")
-                sub_lbl.pack(anchor="w", padx=8, pady=(0, 5))
-                if key == sub_key:
-                    self._metric_vals[f"{key}_sub"] = sub_lbl
+                # Sub-line only on rows that need one; keeps tile heights uniform within the row
+                if sub_key is not None:
+                    sub_lbl = ctk.CTkLabel(tile, text="",
+                                           font=ctk.CTkFont(size=10),
+                                           text_color=C["muted"], anchor="w")
+                    sub_lbl.pack(anchor="w", padx=8, pady=(0, 5))
+                    if key == sub_key:
+                        self._metric_vals[f"{key}_sub"] = sub_lbl
+                else:
+                    ctk.CTkFrame(tile, height=5, fg_color="transparent").pack()
 
         _hdr("NET WORTH CHANGE")
         _tile_row([("nw_1w", "1 Week"), ("nw_1m", "1 Month"), ("nw_3m", "3 Months"),

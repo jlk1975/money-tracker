@@ -104,8 +104,8 @@ python3 wipe.py    # interactive: wipe instances only, or everything
   - Changes when: CSV imported (bank_balance updates), or bills funded/unfunded on Dashboard
   - Does NOT change when linking a transaction to an unfunded bill — the bank_balance already reflects the payment at import time; linking is bookkeeping only
 - **Funding enforcement**: `Mark Funded` and `All Funded` check Safe2Spend before writing; blocked with flash message if insufficient; $0 bills skip the check
-- **Tab switching**: no CTkTabview — manual frame-swap via `_switch_tab()`; "Register" / "Bills" / "Bill List" / "Accounts" / "Insurance" / "Legal" buttons centered in header (width=90); Register is the first tab and the default on launch; active tab highlighted in amber (`C["blue"]`), inactive in `C["border"]`; Insurance and Legal are placeholder tabs (coming soon)
-- **Animal emoji in every tab**: each tab's topmost bar shows `self._app._animal` (size 15) centered via `place(relx=0.5, rely=0.5, anchor="center")` — Bills uses grid col 1 of the expanding mid frame; Bill List / Register / Accounts use `place()` on their respective toolbars/nav bars; Insurance and Legal have a dedicated `CTkFrame` (height=42, `fg_color=C["card"]`) added by `_placeholder()` solely to host the animal
+- **Tab switching**: no CTkTabview — manual frame-swap via `_switch_tab()`; "Register" / "Bills" / "Bill List" / "Accounts" / "Dashboard" buttons centered in header (width=90); Register is the first tab and the default on launch; active tab highlighted in amber (`C["blue"]`), inactive in `C["border"]`
+- **Animal emoji in every tab**: each tab's topmost bar shows `self._app._animal` (size 15) centered via `place(relx=0.5, rely=0.5, anchor="center")` — Bills uses grid col 1 of the expanding mid frame; Bill List / Register / Accounts / Dashboard use `place()` on their respective toolbars/nav bars
 - **Header**: 💰 emoji (size 36) on left; right side is a frame (sticky="e") containing: NWCSS label (size 18 bold, green/red) + animal emoji (size 36)
   - Animal picked once at app launch via `random.choice()` from 16-emoji pool (fox, lion, unicorn, parrot, peacock, butterfly, dragon, raccoon, frog, tiger, shark, flamingo, otter, hedgehog, brontosaurus, T-Rex); stored as `self._animal` on `MoneyTrackerApp`; Noto Color Emoji installed so they render in color
   - NWCSS label = `m["nw_css"]` from `calc.compute_nw_metrics()`; updated via `_update_header_nwcss()` on every `refresh()`; green if ≥ 0, red if < 0; format `+$X.XX` / `-$X.XX`; blank when no NW history; hovering shows tooltip "NW Change Since Start" (`_Tooltip` class)
@@ -177,35 +177,32 @@ python3 wipe.py    # interactive: wipe instances only, or everything
 - Table is sortable by column heading click; search box filters live across Description, Frequency, and Notes
 
 ## Accounts tab (`AccountsTab`)
-- **Layout**: `tk.PanedWindow` (orient="vertical") splits the tab into a collapsible top summary section and the account list below; draggable sash starts at 50/50; sash position persisted to settings JSON on close and restored on launch (`acct_sash_y` key)
-- **▲ Hide Summary / ▼ Show Summary** toggle in toolbar collapses/restores the top section; sash position is saved before collapsing and restored on show
-- **Top section** contains (top to bottom):
-  - **NW summary card** (left, fixed 320px wide): Net Worth, Day N · ✅/⚠️ status, NW/Assets/Debt since-start, Goals progress bars (Cash Goal %, Debt Reduction %)
-  - **Metrics card** (right, expands): 4 labeled groups of small KPI tiles (size-15 bold value + size-10 period label):
-    - **NET WORTH CHANGE**: 1 Week | 1 Month | 3 Months | 6 Months | 1 Year (delta vs historical snapshot; green=up, red=down; "—" when no data for period)
-    - **DEBT CHANGE**: same 5 periods (green=debt down, red=debt up)
-    - **SPENDING**: Past 7 Days | Past 14 Days | Past 30 Days | This Month (tile has sub-line: ▲/▼ $X vs prior month same-day; red=more spending, green=less)
-    - **CASH FLOW**: This Month | Last Month (credits − debits; green=positive, red=negative)
-    - Data: NW/Debt from `db.get_nw_history()` via `calc.compute_nw_period_changes()`; Spending/CF from `db.get_register_cashflow_data()` via `calc.compute_spending_metrics()`
-    - Tile values stored in `self._metric_vals` dict; updated by `_refresh_metrics_panel()` on every `refresh()`
-  - **DEBT section** in the NW summary card (below GOALS): shows Total Debt as a single row; red when > $0, green when $0
-- **Toolbar**: `+ Add Account` | `✎ Edit` | `🗑 Delete` | `📈 Log Balance` | `▲ Hide Accounts` | `▲ Hide Summary` | `⚙ Settings`
+- **Layout**: toolbar + account list treeview filling the remaining space (no PanedWindow — NW summary moved to Dashboard tab)
+- **Toolbar**: `+ Add Account` | `✎ Edit` | `🗑 Delete` | `📈 Log Balance`
   - `Log Balance` disabled for the register-linked account (balance auto-syncs)
-  - `▲ Hide Accounts` / `▼ Show Accounts`: collapses/restores the bottom accounts table pane (uses `paneconfigure minsize=0` to allow full collapse); state saved to `acct_accounts_visible` in settings.json and restored on launch via `_set_initial_sash`
-- **Account list** (bottom pane): grouped treeview by category (Cash / Investments / Credit Cards / Loans)
+- **Account list**: grouped treeview by category (Cash / Investments / Credit Cards / Loans)
   - Columns: Account | Balance | Last Updated | Rate | Monthly Pmt | Payoff Date | Days Left
   - Rate/Monthly Pmt/Payoff Date/Days Left only populate for CC/Loan rows with a linked debt
-  - Category header rows show category name + total balance
+  - Category header rows show category name + total balance; collapsible by clicking header row; state tracked in `_cat_open` dict; ▼/▶ arrows prepended to category label
 - **AccountDialog**: `+ Add Account` / `✎ Edit`; when category is Credit Cards or Loans, shows inline debt fields (Interest Rate %, Monthly Payment, Payoff Date); on save, creates or updates the linked `debts` record automatically; `debt_id` is set on the account
   - `Save & Add Another` button available when creating; starting balance (amount + date) available for new accounts
   - Deleting a CC/Loan account with a linked debt cascades: removes the debt record and all `debt_balances` rows
 - **LogBalanceDialog**: date + balance entry; enter positive balances for all accounts including liabilities; if account has `debt_id`, also upserts `debt_balances` via `log_account_balance()`
-- **NWSettingsDialog** (⚙ Settings): Start Date, Cash Goal, Investment Haircut
-- **NW metrics** (`calc.compute_nw_metrics()`): Net Worth = Cash + Investments − CC − Loans (all at full value, no haircut); CSS = change since start date; LC = change since previous snapshot; goal %s
-- **Account category rows**: collapsible — click a category header row to toggle; state tracked in `_cat_open` dict; ▼/▶ arrows prepended to category label
-- **Debt metrics** (`calc.compute_debt_summary()`): total debt, total monthly payments, years until debt free — derived from CC/Loan accounts with latest balances
 - **Debt balance write-back**: `db.log_account_balance()` automatically upserts `debt_balances` (using `abs(balance)`) when the account has a `debt_id`, keeping the debt balance history in sync
 - **register_linked account**: one Cash account (UWBC) auto-syncs its balance from the most recent `register_transactions.bank_balance` on every refresh via `db.sync_register_account()`
+
+## Dashboard tab (`DashboardTab`)
+- **Toolbar**: ⚙ Settings (opens `NWSettingsDialog`: Start Date, Cash Goal, Investment Haircut)
+- **Body**: NW summary card (left, 320px wide) + Metrics card (right, expands) — both fill the full tab height
+- **NW summary card**: Net Worth, Day N · ✅/⚠️ status, NW/Assets/Debt since-start, Goals progress bars (Cash Goal %, Debt Reduction %), Total Debt row
+- **Metrics card**: 4 labeled groups of small KPI tiles (size-15 bold value + size-10 period label):
+  - **NET WORTH CHANGE**: 1 Week | 1 Month | 3 Months | 6 Months | 1 Year (delta vs historical snapshot; green=up, red=down; "—" when no data)
+  - **DEBT CHANGE**: same 5 periods (green=debt down, red=debt up)
+  - **SPENDING**: Past 7 Days | Past 14 Days | Past 30 Days | This Month (sub-line: ▲/▼ $X vs prior month same-day; red=more, green=less)
+  - **CASH FLOW**: This Month | Last Month (credits − debits; green=positive, red=negative)
+  - Data: NW/Debt from `db.get_nw_history()` via `calc.compute_nw_period_changes()`; Spending/CF from `db.get_register_cashflow_data()` via `calc.compute_spending_metrics()`
+  - Tile values stored in `self._metric_vals` dict; `self._metrics` holds `compute_nw_metrics()` result (read by `MoneyTrackerApp._update_header_nwcss()`)
+- **NW metrics** (`calc.compute_nw_metrics()`): Net Worth = Cash + Investments − CC − Loans; CSS = change since start date; LC = change since previous snapshot; goal %s
 
 ## Expected totals (from fixtures)
 - May 2026: 16 bills, $3,486.59 (Monthly only — no AdHoc)

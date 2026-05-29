@@ -2538,12 +2538,13 @@ class DashboardTab(ctk.CTkFrame):
 
     def __init__(self, parent, app):
         super().__init__(parent, fg_color=C["bg"], corner_radius=0)
-        self._app          = app
-        self._nw_history   = []
-        self._nw_settings  = {"nw_start_date": "", "cash_goal": 0.0}
-        self._metrics      = None
-        self._debt_metrics = None
-        self._metric_vals  = {}
+        self._app              = app
+        self._nw_history       = []
+        self._nw_settings      = {"nw_start_date": "", "cash_goal": 0.0}
+        self._metrics          = None
+        self._debt_metrics     = None
+        self._metric_vals      = {}
+        self._debt_chart_data  = []
 
         self._build_toolbar()
         self._build_body()
@@ -2570,6 +2571,7 @@ class DashboardTab(ctk.CTkFrame):
         top.pack(fill="both", expand=True)
         self._build_summary_panel(top)
         self._build_metrics_panel(top)
+        self._build_debt_chart(content)
 
     # ── Summary panel ─────────────────────────────────────────────────────────
 
@@ -2704,6 +2706,106 @@ class DashboardTab(ctk.CTkFrame):
         _hdr("CASH FLOW")
         _tile_row([("cf_this", "This Month"), ("cf_last", "Last Month")])
 
+    # ── Debt chart ────────────────────────────────────────────────────────────
+
+    def _build_debt_chart(self, parent):
+        card = ctk.CTkFrame(parent, fg_color=C["card"], corner_radius=10,
+                            border_width=1, border_color=C["border"])
+        card.pack(fill="x", pady=(10, 0))
+        ctk.CTkLabel(card, text="CHANGES IN DEBT",
+                     font=ctk.CTkFont(size=10, weight="bold"),
+                     text_color=C["muted"]).pack(anchor="w", padx=12, pady=(8, 2))
+        self._debt_chart = tk.Canvas(card, height=200, bg=C["card"], highlightthickness=0)
+        self._debt_chart.pack(fill="x", padx=12, pady=(0, 10))
+        self._debt_chart.bind("<Configure>", lambda e: self._paint_debt_chart())
+
+    def _get_debt_change_points(self):
+        points = []
+        last = None
+        for snap in self._nw_history:
+            total = round(snap["credit_cards"] + snap["loans"], 2)
+            if total != last:
+                points.append((snap["date"], total))
+                last = total
+        return points
+
+    def _paint_debt_chart(self):
+        c = self._debt_chart
+        c.delete("all")
+        pts = self._debt_chart_data
+        w = c.winfo_width()
+        h = c.winfo_height()
+        if w < 10 or h < 10:
+            return
+        if not pts:
+            c.create_text(w // 2, h // 2, text="No debt history yet",
+                          fill=C["muted"], font=("Helvetica", 11))
+            return
+
+        PAD_L, PAD_R = 20, 20
+        PAD_T = 22   # room above points for amount labels
+        PAD_B = 20   # room below points for date labels
+        draw_w = w - PAD_L - PAD_R
+        draw_h = h - PAD_T - PAD_B
+
+        values = [v for _, v in pts]
+        n = len(pts)
+        if n == 1:
+            lo = values[0] * 0.90
+            hi = values[0] * 1.05 if values[0] != 0 else 1.0
+        else:
+            rng = max(values) - min(values)
+            pad = max(rng * 0.25, max(values) * 0.005)
+            lo = max(0.0, min(values) - pad)
+            hi = max(values) + pad
+
+        def to_y(val):
+            if hi == lo:
+                return PAD_T + draw_h * 0.5
+            return PAD_T + draw_h * (1.0 - (val - lo) / (hi - lo))
+
+        # x positions — evenly spread, single point centered
+        def to_x(i):
+            if n == 1:
+                return PAD_L + draw_w * 0.5
+            return PAD_L + draw_w * (i / (n - 1))
+
+        coords = [(to_x(i), to_y(val)) for i, (_, val) in enumerate(pts)]
+
+        # connecting line
+        if n > 1:
+            flat = [coord for xy in coords for coord in xy]
+            c.create_line(*flat, fill=C["muted"], width=2)
+
+        for i, ((cx, cy), (date_str, val)) in enumerate(zip(coords, pts)):
+            if i == 0:
+                dot_color = C["muted"]
+            elif val < pts[i - 1][1]:
+                dot_color = C["green"]
+            elif val > pts[i - 1][1]:
+                dot_color = C["red"]
+            else:
+                dot_color = C["muted"]
+
+            r = 5
+            c.create_oval(cx - r, cy - r, cx + r, cy + r,
+                          fill=dot_color, outline=C["card"], width=2)
+
+            # amount label above dot
+            c.create_text(cx, cy - r - 4, text=f"${val:,.0f}",
+                          anchor="s", fill=C["text"], font=("Helvetica", 9, "bold"))
+
+            # date label below dot
+            try:
+                parts = date_str.split("/")
+                lbl   = f"{int(parts[0])}/{int(parts[1])}"
+                if i == 0 or parts[2] != pts[i - 1][0].split("/")[2]:
+                    lbl += f"/{parts[2][2:]}"
+            except Exception:
+                lbl = date_str
+            c.create_text(cx, cy + r + 4, text=lbl,
+                          anchor="n", fill=C["muted"], font=("Helvetica", 9))
+
     # ── Refresh ───────────────────────────────────────────────────────────────
 
     def refresh(self):
@@ -2720,9 +2822,12 @@ class DashboardTab(ctk.CTkFrame):
         txns           = db.get_register_cashflow_data(DB_PATH)
         spending_m     = calc.compute_spending_metrics(txns)
 
+        self._debt_chart_data = self._get_debt_change_points()
+
         self._refresh_summary()
         self._refresh_debt_summary()
         self._refresh_metrics_panel(period_changes, spending_m)
+        self._paint_debt_chart()
 
     def _refresh_summary(self):
         m = self._metrics
@@ -2752,7 +2857,7 @@ class DashboardTab(ctk.CTkFrame):
         self._nw_css_label.configure(text=_fmt_signed(m["nw_css"]),        text_color=_color(m["nw_css"]))
         self._nw_lc_label.configure(text=_fmt_signed(m["nw_lc"]),          text_color=_color(m["nw_lc"]))
         self._assets_css_label.configure(text=_fmt_signed(m["assets_css"]), text_color=_color(m["assets_css"]))
-        self._debt_css_label.configure(text=_fmt_signed(m["debt_css"]),     text_color=_color(m["debt_css"]))
+        self._debt_css_label.configure(text=_fmt_signed(m["debt_css"]),     text_color=_color(-m["debt_css"]))
 
         self._cash_goal_bar.set(m["cash_goal_pct"])
         self._cash_goal_lbl.configure(text=f"{m['cash_goal_pct']*100:.0f}%")
